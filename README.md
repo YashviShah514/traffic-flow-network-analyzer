@@ -81,13 +81,13 @@ Dashboard · Create Network (React Flow editor) · Network Library · Mathematic
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/YashviShah514/traffic-flow-network-analyzer)
 
-`render.yaml` is a Blueprint that creates three things: a managed **PostgreSQL** database (`traffic-db`), the **FastAPI** backend (`traffic-flow-api`, `DATABASE_URL` is injected automatically) and the **React** frontend as a static site (`traffic-flow-web`) that forwards `/api/*` to the backend, so no CORS or `VITE_API_URL` setup is needed.
+`render.yaml` is a Blueprint that creates three things: a managed **PostgreSQL** database (`traffic-db`), the **FastAPI** backend (`tfna-yashvi-api`, `DATABASE_URL` is injected automatically) and the **React** frontend as a static site (`tfna-yashvi-web`) that forwards `/api/*` to the backend, so no CORS or `VITE_API_URL` setup is needed.
 
 1. Sign in at render.com, open the link above (or *New -> Blueprint* and pick this repository) and click **Apply**.
 2. Wait for the three resources to finish building (first backend build takes a few minutes: SciPy/SymPy).
-3. Open the URL of **traffic-flow-web**. The three demo networks are created automatically on the first backend start.
+3. Open the URL of **tfna-yashvi-web**. The three demo networks are created automatically on the first backend start.
 
-Notes: the backend rewrite target in `render.yaml` assumes the API's URL is `https://traffic-flow-api.onrender.com`; if Render adds a suffix because the name is taken, edit that line to your real backend URL. Free web services sleep after inactivity (the first request takes ~1 minute) and Render's free PostgreSQL expires after 30 days - upgrade the plan for anything long-lived.
+Notes: the backend rewrite target in `render.yaml` assumes the API's URL is `https://tfna-yashvi-api.onrender.com`; if Render adds a suffix because the name is taken, edit that line to your real backend URL. Free web services sleep after inactivity (the first request takes ~1 minute) and Render's free PostgreSQL expires after 30 days - upgrade the plan for anything long-lived.
 
 Alternative: frontend on Vercel (`frontend/vercel.json`, set `VITE_API_URL` to the backend URL and `CORS_ORIGINS` on the backend).
 

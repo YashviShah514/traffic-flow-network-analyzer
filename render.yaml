@@ -7,7 +7,7 @@ databases:
 services:
   # ---- Backend API -------------------------------------------------------
   - type: web
-    name: traffic-flow-api
+    name: tfna-yashvi-api
     runtime: python
     plan: free
     rootDir: backend
@@ -26,7 +26,7 @@ services:
 
   # ---- Frontend (static site) ---------------------------------------------
   - type: web
-    name: traffic-flow-web
+    name: tfna-yashvi-web
     runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
@@ -38,7 +38,7 @@ services:
       # Same-origin API: browser calls /api/... on the static site, Render forwards it to the backend.
       - type: rewrite
         source: /api/*
-        destination: https://traffic-flow-api.onrender.com/api/*
+        destination: https://tfna-yashvi-api.onrender.com/api/*
       - type: rewrite
         source: /*
         destination: /index.html
