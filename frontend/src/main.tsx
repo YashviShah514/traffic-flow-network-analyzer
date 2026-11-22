@@ -1,0 +1,19 @@
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import App from "./App";
+import { NetworkProvider } from "./lib/store";
+import "./index.css";
+import "@xyflow/react/dist/style.css";
+
+if (localStorage.getItem("tfna.dark") === "1") document.documentElement.classList.add("dark");
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <NetworkProvider>
+        <App />
+      </NetworkProvider>
+    </BrowserRouter>
+  </React.StrictMode>,
+);

@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply bg-slate-50 text-navy-900 antialiased font-sans; }
+  .dark body { @apply bg-navy-950 text-slate-100; }
+  .eq { @apply font-mono text-sm; }
+}
+.react-flow__attribution { display: none; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.fade-up { animation: fadeUp .25s ease-out; }
+@media (prefers-reduced-motion: reduce) { .fade-up { animation: none; } }
