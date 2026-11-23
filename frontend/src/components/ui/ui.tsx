@@ -4,7 +4,7 @@ import { createContext, useContext, useState, type ButtonHTMLAttributes, type HT
 import { cn } from "@/lib/utils";
 
 const button = cva(
-  "inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50 disabled:pointer-events-none",
+  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50 disabled:pointer-events-none",
   {
     variants: {
       variant: {
@@ -29,7 +29,7 @@ export const CardHeader = ({ className, ...p }: HTMLAttributes<HTMLDivElement>) 
 export const CardTitle = ({ className, ...p }: HTMLAttributes<HTMLHeadingElement>) => <h3 className={cn("font-semibold text-navy-900 dark:text-white", className)} {...p} />;
 export const CardContent = ({ className, ...p }: HTMLAttributes<HTMLDivElement>) => <div className={cn("px-5 pb-5", className)} {...p} />;
 
-const badge = cva("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold", {
+const badge = cva("inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold", {
   variants: { tone: {
     neutral: "bg-slate-100 text-slate-700", blue: "bg-brand-100 text-brand-700", cyan: "bg-cyan2-100 text-cyan-800",
     green: "bg-emerald-100 text-emerald-800", red: "bg-red-100 text-red-700", amber: "bg-amber-100 text-amber-800" } },
@@ -60,7 +60,7 @@ export const TabsList = ({ className, ...p }: HTMLAttributes<HTMLDivElement>) =>
 export function TabsTrigger({ value, children }: { value: string; children: ReactNode }) {
   const { v, set } = useContext(TabCtx);
   return <button role="tab" aria-selected={v === value} onClick={() => set(value)}
-    className={cn("rounded-lg px-3 py-1.5 text-sm font-medium transition", v === value ? "bg-white text-brand-700 shadow-sm dark:bg-navy-700 dark:text-white" : "text-slate-600 hover:text-navy-900 dark:text-slate-300")}>{children}</button>;
+    className={cn("whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition", v === value ? "bg-white text-brand-700 shadow-sm dark:bg-navy-700 dark:text-white" : "text-slate-600 hover:text-navy-900 dark:text-slate-300")}>{children}</button>;
 }
 export function TabsContent({ value, children }: { value: string; children: ReactNode }) {
   const { v } = useContext(TabCtx);
@@ -74,7 +74,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
         <h1 className="text-2xl font-bold tracking-tight text-navy-900 dark:text-white">{title}</h1>
         {subtitle && <p className="mt-1 max-w-3xl text-sm text-slate-500 dark:text-slate-300">{subtitle}</p>}
       </div>
-      <div className="flex gap-2">{actions}</div>
+      <div className="flex flex-wrap gap-2">{actions}</div>
     </div>
   );
 }

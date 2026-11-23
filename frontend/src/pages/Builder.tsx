@@ -2,12 +2,13 @@ import {
   Background, BaseEdge, Controls, EdgeLabelRenderer, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider,
   useInternalNode, useReactFlow, useNodesState, type Connection, type EdgeProps, type Node, type NodeProps,
 } from "@xyflow/react";
-import { ArrowLeftRight, FilePlus2, Plus, Save, Sigma, Trash2 } from "lucide-react";
+import { ArrowLeftRight, FilePlus2, Plus, Save, Sigma, Trash2, X } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Alert, Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/ui";
 import { nextKey, variableNames } from "@/lib/network";
 import { useNetwork } from "@/lib/store";
+import { useMedia } from "@/lib/useMedia";
 import { cn } from "@/lib/utils";
 
 const RADIUS = 28;
@@ -20,7 +21,7 @@ function JunctionNode({ data, selected }: NodeProps) {
     <div className={cn("relative grid h-14 w-14 place-items-center rounded-full bg-navy-900 text-xs font-bold text-white shadow-lg ring-offset-2",
       selected && "ring-2 ring-cyan2-400")}>
       <Handle type="target" position={Position.Top} isConnectableStart={false} style={{ inset: 0, width: "100%", height: "100%", transform: "none", opacity: 0, borderRadius: "50%" }} />
-      <Handle type="source" position={Position.Right} title="Drag to another junction to create a road"
+      <Handle type="source" position={Position.Right} title="Drag to another junction to create a road" className="tfna-src"
         style={{ right: -9, width: 14, height: 14, background: "#22d3ee", border: "2px solid white" }} />
       {d.name.slice(0, 5)}
       {d.ext !== 0 && <span className="absolute -bottom-5 whitespace-nowrap text-[11px] font-semibold text-cyan-600">{d.ext > 0 ? `+${d.ext} in` : `${-d.ext} out`}</span>}
@@ -45,7 +46,7 @@ function RoadEdge({ id, source, target, markerEnd, selected, data }: EdgeProps) 
   return (
     <>
       <BaseEdge id={id} path={`M${x1},${y1} L${x2},${y2}`} markerEnd={markerEnd}
-        style={{ stroke: selected ? "#0891b2" : d.known ? "#0e7490" : "#1d4ed8", strokeWidth: selected ? 3.5 : 2.4 }} interactionWidth={22} />
+        style={{ stroke: selected ? "#0891b2" : d.known ? "#0e7490" : "#1d4ed8", strokeWidth: selected ? 3.5 : 2.4 }} interactionWidth={30} />
       <EdgeLabelRenderer>
         <div className="nodrag nopan pointer-events-none absolute rounded-md bg-white/90 px-1.5 py-0.5 text-[11px] font-semibold text-navy-900 shadow-sm"
           style={{ transform: `translate(-50%,-50%) translate(${(x1 + x2) / 2 + ox * 1.2}px,${(y1 + y2) / 2 + oy * 1.2}px)` }}>
@@ -65,6 +66,8 @@ function Editor() {
   const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const varNames = useMemo(() => variableNames(net), [net]);
   const rf = useReactFlow();
+  // Below xl the properties panel is a bottom sheet so it is reachable without scrolling past the canvas.
+  const compact = useMedia("(max-width: 1279px)");
   const wrap = useRef<HTMLDivElement>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -109,6 +112,21 @@ function Editor() {
     catch (e: any) { setMsg({ tone: "error", text: e.message }); }
   };
 
+  // On small screens the bottom sheet covers the lower canvas: pan so the selection stays visible above it.
+  useEffect(() => {
+    if (!compact || !sel) return;
+    const pts = sel.kind === "junction"
+      ? net.junctions.filter((j) => j.key === sel.key).map((j) => ({ x: j.x + 28, y: j.y + 28 }))
+      : net.roads.filter((r) => r.key === sel.key).flatMap((r) => {
+          const a = net.junctions.find((j) => j.key === r.source), b = net.junctions.find((j) => j.key === r.target);
+          return a && b ? [{ x: (a.x + b.x) / 2 + 28, y: (a.y + b.y) / 2 + 28 }] : [];
+        });
+    if (!pts[0]) return;
+    const z = rf.getZoom();
+    rf.setCenter(pts[0].x, pts[0].y + (window.innerHeight * 0.2) / z, { zoom: z, duration: 250 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel?.key, compact]);
+
   const selJ = sel?.kind === "junction" ? net.junctions.find((j) => j.key === sel.key) : undefined;
   const selR = sel?.kind === "road" ? net.roads.find((r) => r.key === sel.key) : undefined;
   const jname = (k: string) => net.junctions.find((j) => j.key === k)?.name ?? k;
@@ -127,7 +145,7 @@ function Editor() {
             <Button size="sm" onClick={addJunction}><Plus size={14} />Add junction</Button>
             <span className="text-xs text-slate-500">{net.junctions.length} junctions · {net.roads.length} roads · scroll to zoom, drag canvas to pan</span>
           </div>
-          <div ref={wrap} className="h-[560px]" data-testid="flow-canvas">
+          <div ref={wrap} className="h-[58dvh] min-h-[360px] xl:h-[calc(100dvh-240px)] xl:min-h-[520px]" data-testid="flow-canvas">
             <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange}
               onNodeDragStop={(_, n) => updJ(n.id, { x: Math.round(n.position.x), y: Math.round(n.position.y) })}
               onConnect={onConnect} onNodeClick={(_, n) => setSel({ kind: "junction", key: n.id })}
@@ -147,7 +165,8 @@ function Editor() {
           <Tabs defaultValue="edit">
             <TabsList><TabsTrigger value="edit">Properties</TabsTrigger><TabsTrigger value="eq">Live equations</TabsTrigger></TabsList>
             <TabsContent value="edit">
-              <Card><CardContent className="space-y-3 pt-5">
+              <Card className={cn("relative", compact && sel && "fixed inset-x-2 bottom-2 z-30 max-h-[48dvh] overflow-y-auto border-brand-500 shadow-2xl")}><CardContent className="space-y-3 pt-5">
+                {compact && sel && <button aria-label="Close panel" className="absolute right-2 top-2 grid h-10 w-10 place-items-center rounded-lg hover:bg-slate-100" onClick={() => setSel(null)}><X size={18} /></button>}
                 {!selJ && !selR && <p className="text-sm text-slate-500">Select a junction or road on the canvas to edit it.</p>}
                 {selJ && <>
                   <CardTitle>Junction</CardTitle>

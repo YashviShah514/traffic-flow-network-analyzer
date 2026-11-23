@@ -45,6 +45,9 @@ export default function Documentation() {
       <Tabs defaultValue="docs">
         <TabsList><TabsTrigger value="docs">Documentation</TabsTrigger><TabsTrigger value="viva">Viva preparation</TabsTrigger></TabsList>
         <TabsContent value="docs">
+          <label className="mb-4 block lg:hidden"><span className="mb-1 block text-xs font-medium text-slate-600">Jump to section</span>
+            <select className="h-10 w-full rounded-lg border border-slate-300 bg-white px-2 dark:bg-navy-800" defaultValue="" onChange={(e) => e.target.value && document.getElementById(e.target.value)?.scrollIntoView({ behavior: "smooth" })}>
+              <option value="">Choose…</option>{DOCS.map((d, i) => <option key={d.title} value={`doc-${i}`}>{i + 1}. {d.title}</option>)}</select></label>
           <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
             <nav className="hidden lg:block"><ul className="sticky top-6 space-y-1 text-sm">
               {DOCS.map((d, i) => <li key={d.title}><a className="text-slate-600 hover:text-brand-700 dark:text-slate-300" href={`#doc-${i}`}>{i + 1}. {d.title}</a></li>)}</ul></nav>

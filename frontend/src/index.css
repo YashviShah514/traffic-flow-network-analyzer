@@ -11,3 +11,18 @@
 @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .fade-up { animation: fadeUp .25s ease-out; }
 @media (prefers-reduced-motion: reduce) { .fade-up { animation: none; } }
+
+/* ---------- responsive / touch refinements ---------- */
+h1, h2, h3 { overflow-wrap: anywhere; }
+/* iOS Safari zooms the page when a focused field is < 16px */
+@media (max-width: 1023px) { input, select, textarea { font-size: 16px !important; } }
+/* Finger-sized targets on touch screens */
+@media (pointer: coarse), (max-width: 1023px) {
+  button:not(.react-flow__controls-button), [role="tab"], select, summary { min-height: 40px; }
+  button.h-9.w-9 { min-width: 40px; }
+  .react-flow__controls-button { width: 34px !important; height: 34px !important; }
+  .react-flow__handle.tfna-src { width: 32px !important; height: 32px !important; right: -16px !important; }
+}
+/* Respect notches / home indicator */
+.safe-bottom { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+.safe-x { padding-left: max(0.75rem, env(safe-area-inset-left)); padding-right: max(0.75rem, env(safe-area-inset-right)); }

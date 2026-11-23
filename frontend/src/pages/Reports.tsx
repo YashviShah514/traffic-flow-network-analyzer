@@ -24,18 +24,33 @@ export default function Reports() {
       {err && <Alert tone="error">{err}</Alert>}
       {!net.junctions.length ? <NeedNetwork /> : (
         <Card className="mb-6"><CardContent className="flex flex-wrap items-center gap-4 pt-5">
-          <div className="min-w-0 flex-1"><div className="font-semibold">{net.name}</div>
+          <div className="min-w-0 flex-1 basis-60"><div className="font-semibold">{net.name}</div>
             <div className="text-sm text-slate-500">{analysis ? `${analysis.analysis.classification} · rank ${analysis.analysis.rank} · parameters: ${Object.entries(params).map(([k, v]) => `${k}=${v}`).join(", ") || "defaults"}` : "analysing…"}</div></div>
           <Button onClick={make} disabled={busy || !analysis}><Download size={16} />{busy ? "Generating…" : "Download PDF report"}</Button>
         </CardContent></Card>
       )}
       <Card><CardHeader><CardTitle>Stored solutions (database)</CardTitle></CardHeader><CardContent>
         {history.length === 0 ? <p className="text-sm text-slate-500">No stored solutions yet. Use "Store solution in database" in the solver.</p> : (
-          <table className="w-full text-sm"><thead><tr className="text-left text-xs text-slate-500"><th>Network</th><th>Result</th><th>Rank</th><th>Free variables</th><th>Stored</th></tr></thead><tbody>
-            {history.map((s) => <tr key={s.id} className="border-t border-slate-100 dark:border-navy-700"><td className="py-1.5">{s.network}</td>
-              <td><Badge tone={s.classification === "unique" ? "green" : s.classification === "infinite" ? "amber" : "red"}>{s.classification}</Badge></td>
-              <td>{s.rank}</td><td className="eq">{s.free_variables.join(", ") || "—"}</td><td className="text-slate-500">{new Date(s.created_at).toLocaleString()}</td></tr>)}
-          </tbody></table>)}
+          <>
+            <ul className="space-y-3 sm:hidden">
+              {history.map((s) => (
+                <li key={s.id} className="rounded-xl border border-slate-200 p-3 text-sm dark:border-navy-700">
+                  <div className="mb-1 font-semibold">{s.network}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={s.classification === "unique" ? "green" : s.classification === "infinite" ? "amber" : "red"}>{s.classification}</Badge>
+                    <span>rank {s.rank}</span><span className="eq">free: {s.free_variables.join(", ") || "-"}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">{new Date(s.created_at).toLocaleString()}</div>
+                </li>))}
+            </ul>
+            <div className="hidden overflow-x-auto sm:block">
+              <table className="w-full text-sm"><thead><tr className="text-left text-xs text-slate-500"><th>Network</th><th>Result</th><th>Rank</th><th>Free variables</th><th>Stored</th></tr></thead><tbody>
+                {history.map((s) => <tr key={s.id} className="border-t border-slate-100 dark:border-navy-700"><td className="py-1.5 pr-3">{s.network}</td>
+                  <td><Badge tone={s.classification === "unique" ? "green" : s.classification === "infinite" ? "amber" : "red"}>{s.classification}</Badge></td>
+                  <td>{s.rank}</td><td className="eq">{s.free_variables.join(", ") || "—"}</td><td className="whitespace-nowrap text-slate-500">{new Date(s.created_at).toLocaleString()}</td></tr>)}
+              </tbody></table>
+            </div>
+          </>)}
       </CardContent></Card>
     </>
   );

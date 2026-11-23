@@ -91,6 +91,10 @@ Notes: the backend rewrite target in `render.yaml` assumes the API's URL is `htt
 
 Alternative: frontend on Vercel (`frontend/vercel.json`, set `VITE_API_URL` to the backend URL and `CORS_ORIGINS` on the backend).
 
+## Responsive design
+
+The UI adapts from 360 px phones to 1920 px desktops: a drawer menu below 1024 px, stacked layouts on narrow screens, the network editor's property panel becomes a bottom sheet below 1280 px, tables become card lists on phones, finger-sized targets and 16 px inputs on touch devices (no iOS zoom-on-focus), safe-area padding for notched phones, and the editor canvas fills tall desktop screens. Presentation Mode scales its 16:9 slides to any screen, supports swipe left/right, shows a "rotate your phone" hint in portrait and hides the Fullscreen button where the browser has no Fullscreen API (iPhone Safari).
+
 ## Verification status
 
 | Check | Result |
@@ -99,6 +103,7 @@ Alternative: frontend on Vercel (`frontend/vercel.json`, set `VITE_API_URL` to t
 | Frontend tests (`vitest`) + `tsc` + `vite build` | 10 pass, type-check and build clean |
 | PostgreSQL constraints | CHECK(flow >= 0), CHECK(source <> target) and UNIQUE(network, key) verified to reject bad rows |
 | Browser walkthrough (Edge, Playwright) | dashboard, library, editor (add junction, drag-to-connect, drag node, edit, save), all five solver tabs, graph page, PDF download, team/docs/viva/settings, all 21 slides, reload persistence - zero console errors; phone width has no horizontal scroll |
+| Responsive layout | audited at 360, 390, 768, 1024, 1440 and 1920 px across all 15 screens: no horizontal overflow; touch tests (bottom sheet, drawer, swipe, landscape) pass |
 | PDF report | generated and rendered; contents checked page by page |
 
 Bugs found and fixed during this verification: the null space was hidden when `AX = B` was inconsistent (it depends only on `A`); the PDF crashed for roads without a label; saving an edited demo network overwrote the demo (demos are now read-only, "Save" stores a copy); new junctions could spawn under UI overlays.

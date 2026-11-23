@@ -1,5 +1,5 @@
 import { BookOpen, Library, LayoutDashboard, Menu, Network, Presentation, Route as RouteIcon, Settings as SettingsIcon, Sigma, FileText, Users, PencilRuler } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useNetwork } from "./lib/store";
 import { cn } from "./lib/utils";
@@ -32,10 +32,18 @@ export default function App() {
   const { net, dirty } = useNetwork();
   const loc = useLocation();
   const fullBleed = loc.pathname === "/present";
+  // Close the mobile menu with Escape and lock page scroll while it is open.
+  useEffect(() => {
+    if (!open) return;
+    const k = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", k);
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", k); document.body.style.overflow = ""; };
+  }, [open]);
   if (fullBleed) return <PresentationMode />;
   return (
     <div className="flex min-h-screen">
-      <aside className={cn("fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-navy-900 text-slate-200 transition-transform lg:static lg:translate-x-0", open ? "translate-x-0" : "-translate-x-full")}>
+      <aside className={cn("fixed inset-y-0 left-0 z-30 flex h-dvh w-64 max-w-[85vw] flex-col bg-navy-900 text-slate-200 transition-transform lg:sticky lg:top-0 lg:translate-x-0", open ? "translate-x-0" : "-translate-x-full")}>
         <div className="flex items-center gap-2 px-5 py-5">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-cyan2 text-white"><Network size={20} /></div>
           <div className="leading-tight"><div className="text-sm font-bold text-white">Traffic Flow</div><div className="text-xs text-cyan2-400">Network Analyzer</div></div>
@@ -56,10 +64,10 @@ export default function App() {
       {open && <div className="fixed inset-0 z-20 bg-black/40 lg:hidden" onClick={() => setOpen(false)} />}
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur dark:border-navy-700 dark:bg-navy-900/80 lg:hidden">
-          <button aria-label="Open menu" onClick={() => setOpen(true)}><Menu /></button>
+          <button aria-label="Open menu" aria-expanded={open} className="grid h-10 w-10 place-items-center rounded-lg hover:bg-slate-100" onClick={() => setOpen(true)}><Menu /></button>
           <span className="font-semibold">Traffic Flow Network Analyzer</span>
         </header>
-        <main className="fade-up mx-auto max-w-7xl p-4 sm:p-6 lg:p-8" key={loc.pathname}>
+        <main className="fade-up mx-auto max-w-7xl p-4 sm:p-6 lg:p-8 2xl:max-w-[1600px]" key={loc.pathname}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/builder" element={<Builder />} />

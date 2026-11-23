@@ -80,14 +80,14 @@ function Steps({ a }: { a: Analysis }) {
         <Card><CardHeader><CardTitle>REF (Gaussian elimination)</CardTitle></CardHeader><CardContent><Matrix data={a.reduction.ref} cols={cols} augment /></CardContent></Card>
         <Card><CardHeader><CardTitle>RREF (Gauss-Jordan)</CardTitle></CardHeader><CardContent><Matrix data={a.reduction.rref} cols={cols} augment /></CardContent></Card>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <h3 className="font-semibold">Row operations ({steps.length})</h3>
         <Button size="sm" variant="outline" onClick={() => setAll(!all)}>{all ? "Step-by-step view" : "Show all steps"}</Button>
       </div>
       {steps.length === 0 && <Alert tone="info">The matrix was already in reduced form — no row operations were needed.</Alert>}
       {!all && s && (
         <Card><CardContent className="pt-5">
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <Button size="icon" variant="outline" aria-label="Previous step" disabled={i === 0} onClick={() => setI(i - 1)}><ChevronLeft size={16} /></Button>
             <span className="text-sm">Step <b>{s.index}</b> of {steps.length}</span>
             <Button size="icon" variant="outline" aria-label="Next step" disabled={i >= steps.length - 1} onClick={() => setI(i + 1)}><ChevronRight size={16} /></Button>
@@ -103,7 +103,7 @@ function Steps({ a }: { a: Analysis }) {
         <div className="space-y-3">
           {steps.map((st) => (
             <Card key={st.index}><CardContent className="flex flex-wrap items-center gap-6 pt-4">
-              <div className="w-72 text-sm"><div className="font-semibold">#{st.index} · {st.kind} <Badge className="ml-1">{st.phase}</Badge></div>
+              <div className="w-full text-sm sm:w-72"><div className="font-semibold">#{st.index} · {st.kind} <Badge className="ml-1">{st.phase}</Badge></div>
                 <div className="eq text-brand-700">{st.notation}</div><div className="text-slate-500">{st.description}</div></div>
               <Matrix data={st.matrix} augment highlight={st.pivot} />
             </CardContent></Card>
@@ -157,9 +157,9 @@ function SolutionTab({ a }: { a: Analysis }) {
             <p>Every solution of AX = B is <b>mathematically valid</b>. It is <b>physically feasible</b> only if every road flow is ≥ 0 (traffic cannot flow backwards).</p>
             <p>Is any nonnegative solution possible? <Badge tone={a.feasibility.exists ? "green" : "red"}>{a.feasibility.exists ? "Yes" : "No"}</Badge></p>
             {a.feasibility.exists && Object.keys(a.feasibility.ranges).length > 0 && (
-              <table className="text-left"><thead><tr className="text-xs text-slate-500"><th className="pr-6">Road</th><th className="pr-6">Min flow</th><th>Max flow</th></tr></thead><tbody>
+              <div className="overflow-x-auto"><table className="text-left"><thead><tr className="text-xs text-slate-500"><th className="pr-6">Road</th><th className="pr-6">Min flow</th><th>Max flow</th></tr></thead><tbody>
                 {Object.entries(a.feasibility.ranges).map(([k, r]) => <tr key={k}><td className="eq pr-6">{k}</td><td className="pr-6">{r.min}</td><td>{r.max ?? "unbounded"}</td></tr>)}
-              </tbody></table>)}
+              </tbody></table></div>)}
             {a.feasible_example && <p className="text-slate-500">Example feasible parameters: {Object.entries(a.feasible_example.parameters).map(([k, v]) => `${k} = ${v}`).join(", ") || "(unique)"}.</p>}
             <p className="text-xs text-slate-400">Ranges come from a linear program (floating point); the algebra above is exact.</p>
           </CardContent></Card>

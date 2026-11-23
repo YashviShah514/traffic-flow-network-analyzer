@@ -43,11 +43,11 @@ export default function GraphAnalysis() {
           </CardContent></Card>
 
           <Card><CardHeader><CardTitle>Adjacency lists</CardTitle></CardHeader><CardContent>
-            <table className="w-full text-sm"><thead><tr className="text-left text-xs text-slate-500"><th>Junction</th><th>Out →</th><th>← In</th><th>deg(in/out)</th></tr></thead><tbody>
+            <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs text-slate-500"><th>Junction</th><th>Out →</th><th>← In</th><th>deg(in/out)</th></tr></thead><tbody>
               {Object.keys(g.adjacency_out).map((k) => (
                 <tr key={k} className="border-t border-slate-100 dark:border-navy-700"><td className="py-1 font-semibold">{k}</td>
                   <td className="eq">[{g.adjacency_out[k].join(", ")}]</td><td className="eq">[{g.adjacency_in[k].join(", ")}]</td><td>{g.degrees[k].in}/{g.degrees[k].out}</td></tr>))}
-            </tbody></table>
+            </tbody></table></div>
           </CardContent></Card>
 
           <Card><CardHeader><CardTitle>BFS from {g.start}</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">

@@ -163,6 +163,9 @@ export default function PresentationMode() {
   const [i, setI] = useState(() => Math.min(SLIDES.length - 1, Math.max(0, Number(sessionStorage.getItem("tfna.slide") ?? 0))));
   const [scale, setScale] = useState(1);
   const [full, setFull] = useState(false);
+  const [portrait, setPortrait] = useState(false);          // narrow portrait screen: slide is tiny -> show a rotate hint
+  const touch = useRef<{ x: number; y: number } | null>(null); // swipe start
+  const canFull = typeof document !== "undefined" && !!document.fullscreenEnabled; // iPhone Safari has no Fullscreen API
   const [notes, setNotes] = useState(false);
   const [demos, setDemos] = useState<Demos>([null, null, null]);
   const root = useRef<HTMLDivElement>(null);
@@ -184,7 +187,11 @@ export default function PresentationMode() {
 
   useEffect(() => { try { sessionStorage.setItem("tfna.slide", String(i)); } catch { /* ignore */ } }, [i]);
   useEffect(() => {
-    const f = () => setScale(Math.min(window.innerWidth / W, (window.innerHeight - (notes ? 150 : 56)) / H));
+    const f = () => {
+      const pt = window.innerWidth < 700 && window.innerHeight > window.innerWidth;
+      setPortrait(pt);
+      setScale(Math.min(window.innerWidth / W, (window.innerHeight - (notes ? 160 : 60) - (pt ? 34 : 0)) / H));
+    };
     f(); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f);
   }, [notes]);
   useEffect(() => {
@@ -207,7 +214,14 @@ export default function PresentationMode() {
   const slide = SLIDES[i];
   const content = useMemo(() => slide.render(demos), [slide, demos]);
   return (
-    <div ref={root} className="flex h-screen flex-col bg-navy-950 text-white" data-testid="presentation">
+    <div ref={root} className="flex h-dvh flex-col bg-navy-950 text-white" data-testid="presentation"
+      onTouchStart={(e) => { touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+      onTouchEnd={(e) => {
+        const t = touch.current; touch.current = null; if (!t) return;
+        const dx = e.changedTouches[0].clientX - t.x, dy = e.changedTouches[0].clientY - t.y;
+        if (Math.abs(dx) > 50 && Math.abs(dy) < 60) go(dx < 0 ? 1 : -1);      // swipe left = next, right = previous
+      }}>
+      {portrait && <div className="bg-cyan-400/15 px-3 py-1.5 text-center text-xs text-cyan-200">Tip: rotate your phone to landscape for a larger slide. Swipe left/right to change slides.</div>}
       <div className="flex flex-1 items-center justify-center overflow-hidden">
         <div style={{ width: W, height: H, transform: `scale(${scale})`, flex: "none" }} key={i}
           className="fade-up relative overflow-hidden rounded-2xl bg-gradient-to-br from-navy-900 to-navy-950 p-14 shadow-2xl" role="region" aria-label={`Slide ${i + 1}: ${slide.title}`}>
@@ -216,15 +230,15 @@ export default function PresentationMode() {
         </div>
       </div>
       {notes && <div className="max-h-28 overflow-y-auto border-t border-white/10 bg-navy-900 px-6 py-3 text-sm text-slate-200"><b className="text-cyan-300">Presenter notes — {slide.title}: </b>{slide.notes}</div>}
-      <div className="flex items-center gap-2 border-t border-white/10 bg-navy-900 px-4 py-2 text-sm">
-        <Link to="/" className="flex items-center gap-1 rounded-lg px-2 py-1 hover:bg-white/10" aria-label="Exit presentation"><Home size={16} />Exit</Link>
+      <div className="safe-bottom safe-x flex items-center gap-1 border-t border-white/10 bg-navy-900 px-2 py-2 text-sm sm:gap-2 sm:px-4">
+        <Link to="/" className="flex items-center gap-1 rounded-lg px-2 py-1 hover:bg-white/10" aria-label="Exit presentation"><Home size={16} /><span className="hidden sm:inline">Exit</span></Link>
         <button className="rounded-lg p-1.5 hover:bg-white/10 disabled:opacity-30" disabled={i === 0} onClick={() => go(-1)} aria-label="Previous slide"><ChevronLeft /></button>
-        <select aria-label="Jump to slide" className="max-w-[16rem] rounded bg-navy-800 px-2 py-1" value={i} onChange={(e) => setI(Number(e.target.value))}>
+        <select aria-label="Jump to slide" className="min-w-0 flex-1 rounded bg-navy-800 px-2 py-1 sm:max-w-[16rem] sm:flex-none" value={i} onChange={(e) => setI(Number(e.target.value))}>
           {SLIDES.map((s, k) => <option key={k} value={k}>{k + 1}. {s.title}</option>)}</select>
         <button className="rounded-lg p-1.5 hover:bg-white/10 disabled:opacity-30" disabled={i === SLIDES.length - 1} onClick={() => go(1)} aria-label="Next slide"><ChevronRight /></button>
-        <span className="ml-2 hidden text-slate-400 md:inline">← → space · F fullscreen · N notes</span>
-        <button className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 hover:bg-white/10" onClick={() => setNotes(!notes)}><StickyNote size={16} />Notes</button>
-        <button className="flex items-center gap-1 rounded-lg px-2 py-1 hover:bg-white/10" onClick={toggleFull}>{full ? <Minimize size={16} /> : <Maximize size={16} />}{full ? "Exit full screen" : "Full screen"}</button>
+        <span className="ml-2 hidden whitespace-nowrap text-slate-400 lg:inline">← → space · F fullscreen · N notes</span>
+        <button className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 hover:bg-white/10" aria-label="Toggle presenter notes" onClick={() => setNotes(!notes)}><StickyNote size={16} /><span className="hidden sm:inline">Notes</span></button>
+        {canFull && <button className="flex items-center gap-1 rounded-lg px-2 py-1 hover:bg-white/10" aria-label={full ? "Exit full screen" : "Full screen"} onClick={toggleFull}>{full ? <Minimize size={16} /> : <Maximize size={16} />}<span className="hidden whitespace-nowrap sm:inline">{full ? "Exit full screen" : "Full screen"}</span></button>}
       </div>
     </div>
   );
