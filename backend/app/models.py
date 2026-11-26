@@ -28,6 +28,8 @@ class Network(Base):
     name: Mapped[str] = mapped_column(String(160))
     description: Mapped[str] = mapped_column(Text, default="")
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    method: Mapped[str] = mapped_column(String(16), default="manual")  # 'manual' | 'map'
+    map_meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # pickup, destination, route ...
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
     user: Mapped[User] = relationship(back_populates="networks")
@@ -48,8 +50,11 @@ class Junction(Base):
     name: Mapped[str] = mapped_column(String(80))
     x: Mapped[float] = mapped_column(default=0.0)
     y: Mapped[float] = mapped_column(default=0.0)
-    # NET traffic entering from outside the network (+ enters, - leaves)
-    external_inflow: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0)
+    lat: Mapped[float | None] = mapped_column(nullable=True)
+    lng: Mapped[float | None] = mapped_column(nullable=True)
+    node_type: Mapped[str] = mapped_column(String(16), default="junction")
+    # D = net vehicles leaving the modelled network here (+ exit, - enter): incoming - outgoing = D
+    net_demand: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0)
     network: Mapped[Network] = relationship(back_populates="junctions")
 
 
@@ -60,10 +65,15 @@ class Road(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     network_id: Mapped[int] = mapped_column(ForeignKey("networks.id", ondelete="CASCADE"), index=True)
     key: Mapped[str] = mapped_column(String(64))
-    label: Mapped[str] = mapped_column(String(120), default="")
+    label: Mapped[str] = mapped_column(String(120), default="")  # road name
     source_id: Mapped[int] = mapped_column(ForeignKey("junctions.id", ondelete="CASCADE"))
     target_id: Mapped[int] = mapped_column(ForeignKey("junctions.id", ondelete="CASCADE"))
     position: Mapped[int] = mapped_column(Integer, default=0)
+    length_m: Mapped[float | None] = mapped_column(nullable=True)
+    geometry: Mapped[list | None] = mapped_column(JSON, nullable=True)  # [[lat, lng], ...] from source to target
+    osm_way_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    highway: Mapped[str] = mapped_column(String(32), default="")
+    origin: Mapped[str] = mapped_column(String(8), default="user")  # 'osm' | 'user'
     network: Mapped[Network] = relationship(back_populates="roads")
     source: Mapped[Junction] = relationship(foreign_keys=[source_id])
     target: Mapped[Junction] = relationship(foreign_keys=[target_id])
@@ -94,4 +104,5 @@ class Solution(Base):
     free_variables: Mapped[list] = mapped_column(JSON, default=list)
     parameters: Mapped[dict] = mapped_column(JSON, default=dict)
     result: Mapped[dict] = mapped_column(JSON, default=dict)
+    stale: Mapped[bool] = mapped_column(Boolean, default=False)  # network changed since it was solved
     network: Mapped[Network] = relationship(back_populates="solutions")

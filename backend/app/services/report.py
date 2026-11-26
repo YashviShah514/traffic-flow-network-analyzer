@@ -1,144 +1,221 @@
 """PDF report generator (ReportLab). Every number comes from the analysis result."""
 import io
 import math
+from xml.sax.saxutils import escape
 
-from reportlab.graphics.shapes import Circle, Drawing, Line, Polygon, String
+from reportlab.graphics.shapes import Circle, Drawing, PolyLine, Polygon, String
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 NAVY = colors.HexColor("#0b1f3a")
 BLUE = colors.HexColor("#1d4ed8")
+MAX_TABLE_COLUMNS = 16     # wider matrices are printed row by row in sparse form
+MAX_PRINTED_STEPS = 250
 
 
-def _diagram(schema, result, w=480, h=260) -> Drawing:
+def _ascii(text: str) -> str:
+    """The built-in PDF fonts have no arrow / comparison glyphs."""
+    for a, b in (("↔", "<->"), ("→", "->"), ("≥", ">="), ("·", "*"), ("…", "..."), ("−", "-")):
+        text = text.replace(a, b)
+    return text.encode("cp1252", "replace").decode("cp1252")
+
+
+def _diagram(schema, result, w=495, h=300) -> Drawing:
     d = Drawing(w, h)
     js = schema.junctions
     if not js:
         return d
     xs, ys = [j.x for j in js], [j.y for j in js]
-    minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
-    sx = (w - 80) / (maxx - minx or 1)
-    sy = (h - 60) / (maxy - miny or 1)
-    s = min(sx, sy)
-    pos = {j.key: (40 + (j.x - minx) * s, h - 30 - (j.y - miny) * s) for j in js}
+    use_geo = all(j.lat is not None and j.lng is not None for j in js)
+    if use_geo:  # real road shapes
+        lat0 = sum(j.lat for j in js) / len(js)
+        project = lambda lat, lng: (lng * math.cos(math.radians(lat0)), lat)
+        pts = {j.key: project(j.lat, j.lng) for j in js}
+        lines = {r.key: [project(*p) for p in r.geometry] if r.geometry else [pts[r.source], pts[r.target]]
+                 for r in schema.roads}
+    else:
+        pts = {j.key: (j.x, -j.y) for j in js}
+        lines = {r.key: [pts[r.source], pts[r.target]] for r in schema.roads}
+    everything = list(pts.values()) + [p for line in lines.values() for p in line]
+    minx, maxx = min(p[0] for p in everything), max(p[0] for p in everything)
+    miny, maxy = min(p[1] for p in everything), max(p[1] for p in everything)
+    s = min((w - 60) / (maxx - minx or 1), (h - 50) / (maxy - miny or 1))
+    place = lambda p: (30 + (p[0] - minx) * s, 25 + (p[1] - miny) * s)
+
     var = {v["road_key"]: v["name"] for v in result["variables"]}
+    small = len(js) > 14
+    radius = 6 if small else 14
     for r in schema.roads:
-        (x1, y1), (x2, y2) = pos[r.source], pos[r.target]
-        ang = math.atan2(y2 - y1, x2 - x1)
-        # opposite roads between the same pair are drawn side by side
-        off = 5 if any(o.source == r.target and o.target == r.source for o in schema.roads) else 0
-        ox, oy = -math.sin(ang) * off, math.cos(ang) * off
-        ax, ay = x1 + 16 * math.cos(ang) + ox, y1 + 16 * math.sin(ang) + oy
-        bx, by = x2 - 16 * math.cos(ang) + ox, y2 - 16 * math.sin(ang) + oy
-        d.add(Line(ax, ay, bx, by, strokeColor=BLUE, strokeWidth=1.5))
-        d.add(Polygon([bx, by, bx - 8 * math.cos(ang - .4), by - 8 * math.sin(ang - .4),
-                       bx - 8 * math.cos(ang + .4), by - 8 * math.sin(ang + .4)], fillColor=BLUE, strokeColor=BLUE))
-        lab = var.get(r.key) or f"{r.known_flow} (known)"
-        d.add(String((ax + bx) / 2 + 3 + ox, (ay + by) / 2 + 4 + oy, lab, fontSize=8, fillColor=NAVY))
+        line = [place(p) for p in lines[r.key]]
+        opposite = any(o.source == r.target and o.target == r.source for o in schema.roads)
+        if opposite:  # draw the two directions side by side
+            (ax, ay), (bx, by) = line[0], line[-1]
+            ang = math.atan2(by - ay, bx - ax)
+            off = 2 if small else 5
+            line = [(x - math.sin(ang) * off, y + math.cos(ang) * off) for x, y in line]
+        d.add(PolyLine([c for p in line for c in p], strokeColor=BLUE, strokeWidth=0.8 if small else 1.4))
+        # arrow head in the middle of the road
+        i = max(0, len(line) // 2 - 1)
+        (ax, ay), (bx, by) = line[i], line[i + 1]
+        mx, my = (ax + bx) / 2, (ay + by) / 2
+        ang = math.atan2(by - ay, bx - ax)
+        size = 4 if small else 8
+        d.add(Polygon([mx + size / 2 * math.cos(ang), my + size / 2 * math.sin(ang),
+                       mx - size * math.cos(ang - .5), my - size * math.sin(ang - .5),
+                       mx - size * math.cos(ang + .5), my - size * math.sin(ang + .5)], fillColor=BLUE, strokeColor=BLUE))
+        if len(schema.roads) <= 40:
+            lab = var.get(r.key) or f"{r.known_flow} (known)"
+            d.add(String(mx + 3, my + 4, _ascii(lab), fontSize=6 if small else 8, fillColor=NAVY))
     for j in js:
-        x, y = pos[j.key]
-        d.add(Circle(x, y, 16, fillColor=NAVY, strokeColor=NAVY))
-        d.add(String(x, y - 3, j.name[:4], fontSize=8, fillColor=colors.white, textAnchor="middle"))
-        ext = j.external_inflow
-        if str(ext) not in ("0", "0.0"):
-            d.add(String(x, y + 21, f"ext {ext}", fontSize=7, fillColor=colors.HexColor("#0e7490"), textAnchor="middle"))
+        x, y = place(pts[j.key])
+        d.add(Circle(x, y, radius, fillColor=NAVY, strokeColor=NAVY))
+        d.add(String(x, y - (1.8 if small else 3), _ascii(j.name[:4]), fontSize=4.5 if small else 8,
+                     fillColor=colors.white, textAnchor="middle"))
+        if str(j.net_demand) not in ("0", "0.0"):
+            d.add(String(x, y - radius - 9, f"D = {j.net_demand}", fontSize=7, fillColor=colors.HexColor("#0e7490"),
+                         textAnchor="middle"))
     return d
 
 
-def _mtable(rows, header=None, font=8):
-    data = ([header] if header else []) + rows
-    t = Table(data, hAlign="LEFT")
-    st = [("FONTSIZE", (0, 0), (-1, -1), font), ("GRID", (0, 0), (-1, -1), .25, colors.lightgrey),
-          ("ALIGN", (0, 0), (-1, -1), "CENTER")]
-    if header:
-        st += [("BACKGROUND", (0, 0), (-1, 0), NAVY), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white)]
-    t.setStyle(TableStyle(st))
-    return t
-
-
-def build_pdf(schema, result) -> bytes:
+def build_pdf(schema, result, validation) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm,
-                            bottomMargin=16 * mm, title=f"Traffic Flow Report - {schema.name}")
+                            bottomMargin=16 * mm, title=f"FlowMatrix Report - {schema.name}")
     ss = getSampleStyleSheet()
     h1 = ParagraphStyle("h1", parent=ss["Heading1"], textColor=NAVY)
     h2 = ParagraphStyle("h2", parent=ss["Heading2"], textColor=BLUE, spaceBefore=10)
-    body, mono = ss["BodyText"], ParagraphStyle("mono", parent=ss["Code"], fontSize=8)
-    P = lambda t, s=body: Paragraph(t, s)
-    a = result["analysis"]
+    body = ss["BodyText"]
+    mono = ParagraphStyle("mono", parent=ss["BodyText"], fontName="Courier", fontSize=8, leading=10)
+    cell = ParagraphStyle("cell", parent=ss["BodyText"], fontSize=7.5, leading=9)
+
+    def P(text, style=body):
+        return Paragraph(text, style)
+
+    def T(text, style=body):
+        return Paragraph(escape(_ascii(str(text))), style)
+
+    def table(rows, header=None, widths=None, font=8):
+        data = ([header] if header else []) + [[T(c, cell) for c in row] for row in rows]
+        t = Table(data, hAlign="LEFT", colWidths=widths, repeatRows=1 if header else 0)
+        st = [("FONTSIZE", (0, 0), (-1, -1), font), ("GRID", (0, 0), (-1, -1), .25, colors.lightgrey),
+              ("VALIGN", (0, 0), (-1, -1), "TOP")]
+        if header:
+            st += [("BACKGROUND", (0, 0), (-1, 0), NAVY), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white)]
+        t.setStyle(TableStyle(st))
+        return t
+
     mat = result["matrix"]
     vars_ = mat["variables"]
-    el = [P("Traffic Flow Network Analyzer - Report", h1), P(f"<b>Network:</b> {schema.name}"),
-          P(schema.description or ""), Spacer(1, 6), P("1. Network diagram", h2), _diagram(schema, result)]
 
-    el += [P("2. Junctions", h2), _mtable([[j.name, j.key, j.external_inflow] for j in schema.junctions],
-                                          ["Junction", "Key", "External net inflow"])]
-    var = {v["road_key"]: v["name"] for v in result["variables"]}
+    def matrix(rows, augmented):
+        if not rows or not rows[0]:
+            return [P("(no unknown roads)")]
+        if len(rows[0]) <= MAX_TABLE_COLUMNS:
+            t = Table(rows, hAlign="LEFT")
+            style = [("FONTSIZE", (0, 0), (-1, -1), 8), ("GRID", (0, 0), (-1, -1), .25, colors.lightgrey),
+                     ("ALIGN", (0, 0), (-1, -1), "CENTER")]
+            if augmented:
+                style.append(("LINEBEFORE", (-1, 0), (-1, -1), 1.2, BLUE))
+            t.setStyle(TableStyle(style))
+            return [t]
+        out = [T(f"{len(rows)} x {len(rows[0])} matrix, printed row by row (non-zero entries only).")]
+        for i, row in enumerate(rows, 1):
+            coeffs = row[:len(vars_)]
+            terms = ", ".join(f"{vars_[k]}: {v}" for k, v in enumerate(coeffs) if v != "0") or "all zero"
+            tail = f"  |  {row[-1]}" if augmented else ""
+            out.append(T(f"R{i}: {terms}{tail}", mono))
+        return out
+
+    a = result["analysis"]
     jn = {j.key: j.name for j in schema.junctions}
-    el += [P("3. Roads", h2), _mtable([[r.label or r.key, f"{jn[r.source]} -> {jn[r.target]}",
-                                        var.get(r.key, "known"), r.known_flow or "unknown"] for r in schema.roads],
-                                      ["Road", "Direction", "Variable", "Measured flow"])]
-    el += [P("4. Flow-conservation equations", h2),
-           P("Rule: incoming + external inflow = outgoing, i.e. (incoming - outgoing) = -(external inflow).")]
-    for e in result["equations"]:
-        el.append(P(f"<b>{e['junction_name']}</b>: {e['text']}", mono))
-    el += [P("5. Matrices", h2), P("Coefficient matrix A (columns: " + ", ".join(vars_) + "):"),
-           _mtable(mat["A"] or [[""]]), Spacer(1, 4), P("Augmented matrix [A | B]:"), _mtable(mat["augmented"] or [[""]])]
+    var = {v["road_key"]: v["name"] for v in result["variables"]}
+    method = "Automatic, from OpenStreetMap data" if schema.method == "map" else "Manual"
+    el = [P("FlowMatrix - Traffic Flow Analysis Report", h1), T(f"Network: {schema.name}"),
+          T(f"Creation method: {method}"), T(schema.description or "")]
+    meta = schema.map_meta or {}
+    if schema.method == "map" and meta:
+        el.append(T(f"Pickup: {meta.get('pickup', {}).get('label', '')}   Destination: "
+                    f"{meta.get('destination', {}).get('label', '')}. Road data (c) OpenStreetMap contributors."))
+    el += [Spacer(1, 6), P("1. Network diagram", h2), _diagram(schema, result)]
+
+    el += [P("2. Validation", h2)]
+    el += [T(f"{validation['counts']['junctions']} junctions, {validation['counts']['roads']} roads, "
+             f"{validation['counts']['components']} connected part(s).")]
+    el += [T("- " + w["message"]) for w in validation["warnings"]] or [T("No warnings.")]
+
+    el += [P("3. Junctions", h2), table([[j.name, j.node_type, j.net_demand] for j in schema.junctions],
+                                        ["Junction", "Type", "Net external demand D"])]
+    el += [P("4. Roads", h2), table([[r.label or "Unnamed road", f"{jn[r.source]} → {jn[r.target]}",
+                                      var.get(r.key, "-"), r.known_flow if r.known_flow is not None else "unknown",
+                                      f"{r.length_m:.0f} m" if r.length_m else "-"] for r in schema.roads],
+                                    ["Road", "Direction", "Variable", "Measured flow", "Length"],
+                                    widths=[62 * mm, 30 * mm, 20 * mm, 30 * mm, 20 * mm])]
+    el += [P("5. Traffic conservation equations", h2),
+           T("Convention: incoming flow - outgoing flow = D (D = net vehicles leaving the network at the junction).")]
+    el += [T(f"{e['junction_name']}:  {e['text']}", mono) for e in result["equations"]]
+    el += [P("6. Coefficient matrix A", h2), T("Columns: " + ", ".join(vars_))] + matrix(mat["A"], False)
+    el += [P("7. Augmented matrix [A | B]", h2)] + matrix(mat["augmented"], True)
     red = result["reduction"]
-    el += [P("6. Row echelon forms", h2), P("REF (Gaussian elimination):"), _mtable(red["ref"] or [[""]]),
-           Spacer(1, 4), P("RREF (Gauss-Jordan):"), _mtable(red["rref"] or [[""]])]
-    el += [P("7. Row operations", h2)]
-    for s in red["steps"]:
-        if s["kind"] != "pivot":
-            el.append(P(f"Step {s['index']} [{s['phase']}]: <b>{s['notation'].replace('<', '&lt;').replace('>', '&gt;')}</b> - {s['description']}", body))
-    el += [P("8. Rank and classification", h2),
-           P(f"Rank = {a['rank']}; unknowns = {a['n_unknowns']}; equations = {a['n_equations']}; nullity = {a['nullity']}. "
-             f"Classification: <b>{a['classification']}</b>."),
-           P("Pivot variables: " + (", ".join(a["pivot_columns"]) or "none") + ". Free variables: " +
-             (", ".join(a["free_variables"]) or "none") + ".")]
+    ops = [s for s in red["steps"] if s["kind"] != "pivot"]
+    el += [P("8. Row operations", h2)]
+    el += [T(f"Step {s['index']} ({'Gaussian' if s['phase'] == 'forward' else 'Gauss-Jordan'}):  {s['notation']}", mono)
+           for s in ops[:MAX_PRINTED_STEPS]]
+    if len(ops) > MAX_PRINTED_STEPS:
+        el.append(T(f"... {len(ops) - MAX_PRINTED_STEPS} further operations omitted; the application shows all of them."))
+    if not ops:
+        el.append(T("No row operations were needed."))
+    el += [P("9. REF (Gaussian elimination)", h2)] + matrix(red["ref"], True)
+    el += [P("10. RREF (Gauss-Jordan elimination)", h2)] + matrix(red["rref"], True)
+    el += [P("11. Rank and classification", h2),
+           T(f"Rank = independent equations = {a['rank']}; unknowns = {a['n_unknowns']}; equations = {a['n_equations']}; "
+             f"nullity = {a['nullity']}. Classification: {a['classification']}."),
+           T("Pivot variables: " + (", ".join(a["pivot_variables"]) or "none")),
+           T("Free variables: " + (", ".join(a["free_variables"]) or "none"))]
     if a["consistent"]:
-        el.append(P("9. General solution", h2))
-        for g in a["general_solution"]:
-            el.append(P(g["text"], mono))
-        el.append(P("10. Null space basis (AX = 0)", h2))
-        if a["null_basis"]:
-            for b in a["null_basis"]:
-                el.append(P(f"{b['parameter']} * ({', '.join(b['vector'])})  over ({', '.join(vars_)})", mono))
-        else:
-            el.append(P("Null space is {0}: no circulating traffic is possible."))
-        sample, feas = result["sample_solution"], result["feasible_example"]
-        el.append(P("11. Example numerical solution", h2))
-        shown = [("Chosen parameters", sample)]
+        el.append(P("12. General solution", h2))
+        el += [T(g["text"], mono) for g in a["general_solution"]]
+    el.append(P("13. Null space basis (AX = 0)", h2))
+    if a["null_basis"]:
+        for b in a["null_basis"]:
+            nz = ", ".join(f"{vars_[i]}: {c}" for i, c in enumerate(b["vector"]) if c != "0")
+            el.append(T(f"{b['parameter']} (free {b['free_variable']}): {nz}; all other roads 0.", mono))
+    else:
+        el.append(T("The null space is {0}: no circulating traffic is possible."))
+    sample, feas = result["sample_solution"], result["feasible_example"]
+    if sample:
+        el.append(P("14. Example solution and final traffic flows", h2))
+        shown = [("Chosen parameter values", sample)]
         if feas and feas["parameters"] != sample["parameters"]:
             shown.append(("A physically feasible example", feas))
         for title, ex in shown:
-            if not ex:
-                continue
-            ok = "physically feasible" if ex["physically_feasible"] else "NOT physically feasible (negative flow: " + ", ".join(ex["negative_variables"]) + ")"
-            el.append(P(f"<b>{title}</b> - parameters: " + (", ".join(f"{k} = {v}" for k, v in ex["parameters"].items()) or "none")
-                        + f" - mathematically valid, {ok}."))
-            el.append(_mtable([[r["label"] or r["road_key"], f"{r['from']} -> {r['to']}", r["value"],
-                                "measured" if r["known"] else "computed"] for r in ex["roads"]],
-                              ["Road", "Direction", "Flow", "Source"]))
+            ok = ("physically feasible" if ex["physically_feasible"]
+                  else "NOT physically feasible - negative flow on " + ", ".join(ex["negative_variables"]))
+            params = ", ".join(f"{k} = {v}" for k, v in ex["parameters"].items()) or "none"
+            el.append(T(f"{title} (parameters: {params}): mathematically valid, {ok}."))
+            el.append(table([[r["label"] or "Unnamed road", f"{r['from']} → {r['to']}", r["value"],
+                              "measured" if r["known"] else "computed"] for r in ex["roads"]],
+                            ["Road", "Direction", "Flow", "Source"], widths=[75 * mm, 40 * mm, 25 * mm, 25 * mm]))
             el.append(Spacer(1, 4))
     fe = result["feasibility"]
-    el += [P("12. Physical feasibility", h2),
-           P({True: "A nonnegative assignment exists. Flow ranges over all feasible solutions (LP, floating-point):",
-              False: "No nonnegative assignment exists: the solution set is mathematically valid but not physically feasible.",
+    el += [P("15. Physical feasibility", h2),
+           T({True: "A nonnegative flow assignment exists.",
+              False: "No nonnegative assignment exists: the data is mathematically inconsistent with one-way traffic.",
               None: "Feasibility could not be determined."}[fe.get("exists")])]
     if fe.get("ranges"):
-        el.append(_mtable([[k, v["min"], "unbounded" if v["max"] is None else v["max"]] for k, v in fe["ranges"].items()],
-                          ["Variable", "Min", "Max"]))
+        el.append(table([[k, v["min"], "unbounded" if v["max"] is None else v["max"]] for k, v in fe["ranges"].items()],
+                        ["Variable", "Minimum", "Maximum"]))
     v = result["verification"]
-    el += [P("13. Verification", h2), P(f"Exact checks AX = B, Av = 0, back-substitution, rank-nullity and SymPy cross-check: "
-                                        f"<b>{'ALL PASSED' if v['all_passed'] else 'FAILED'}</b>.")]
+    el += [P("16. Verification", h2),
+           T("Exact checks AX = B, Av = 0, rank-nullity, back substitution and a SymPy cross-check: "
+             + ("ALL PASSED." if v["all_passed"] else "FAILED."))]
     g = result["graph"]
-    el += [P("14. Graph connectivity", h2),
-           P(f"Weakly connected: {g['weakly_connected']}. Strongly connected: {g.get('strongly_connected')}. "
-             f"Isolated junctions: {', '.join(g['isolated_junctions']) or 'none'}.")]
-    el += [P("15. Conclusion", h2), P(result["conclusion"])]
+    el += [P("17. Graph connectivity", h2),
+           T(f"Weakly connected: {'yes' if g['weakly_connected'] else 'no'}. Strongly connected: "
+             f"{'yes' if g['strongly_connected'] else 'no'}. Isolated junctions: "
+             f"{', '.join(g['isolated_junctions']) or 'none'}.")]
+    el += [P("18. Conclusion", h2), T(result["conclusion"])]
     doc.build(el)
     return buf.getvalue()

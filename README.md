@@ -1,121 +1,105 @@
-# Traffic Flow Network Analyzer
+# FlowMatrix — Traffic Flow Network Analyzer
 
-Estimates unknown traffic flows on a directed road network using **Linear Algebra** (flow-conservation equations, Gaussian / Gauss-Jordan elimination, rank, free variables, null space) and **Graph Theory** (adjacency lists, BFS, connectivity), with a FastAPI + database backend and a React front end.
+Estimates unknown road traffic with **Linear Algebra** (conservation equations, Gaussian / Gauss-Jordan elimination, rank, free variables, null space) and **Graph Theory** (adjacency lists, BFS, connectivity). A network is created either **from real OpenStreetMap roads** between two places or **drawn by hand**; both produce the same graph and use the same solver.
 
-At every junction: `incoming + external inflow = outgoing`. Sensors fix some road flows; the rest become unknowns `x1, x2, …`, giving `AX = B`.
+## The convention
 
-> **Sign convention.** "External inflow" is the *net* traffic entering a junction from outside the model (+ enters, − leaves). The equation row is `incoming − outgoing = −external inflow`, with known road flows moved to the right-hand side.
-
-## Repository layout
+At every junction
 
 ```
-backend/
-  app/engine/linalg.py       hand-written exact row reduction (Fractions), step recording
-  app/engine/equations.py    network -> equations, A, B, [A|B]
-  app/engine/solution.py     classification, general solution, null space, LP feasibility, SymPy cross-check
-  app/engine/pipeline.py     assembles the JSON served to the UI
-  app/graph/analysis.py      adjacency lists, BFS, weak/strong connectivity, isolated junctions
-  app/models.py              users, networks, junctions, roads, observed_flows, solutions
-  app/routers/api.py         REST API (/api/...)
-  app/services/              demo networks, repository, PDF report
-  tests/                     pytest suite
-frontend/                    React + Vite + TypeScript + Tailwind + React Flow + Recharts
-render.yaml                  Render blueprint (API + PostgreSQL)
-frontend/vercel.json         Vercel SPA config
+incoming flow − outgoing flow = D
 ```
+
+`D` is the junction's **net external demand**: the net number of vehicles that **leave** the modelled network there (positive = vehicles exit, negative = vehicles enter). Measured flows are moved to the right-hand side; unknown roads become `x1, x2, …`, giving `AX = B`.
+
+## Features
+
+- **Dashboard:** total networks, total junctions, solved networks (all computed from the database), *Create New Network*, and the saved networks with Open / Edit / Delete.
+- **Automatic map creation:** address autocomplete for pickup and destination (or click / drag on the map), real roads from OpenStreetMap in a corridor around the driving route, one-way rules preserved, real road geometry.
+- **Manual creation:** click to add junctions, click two junctions (or drag) to connect them, edit demands, names, measured flows and direction.
+- **One workspace page per network:** the map or canvas on top; below it 15 analysis sections (validation, junctions, equations, A, [A|B], Gaussian elimination, row-operation history, REF/RREF, rank, pivot and free variables, classification, general solution, null space, example solution, final network).
+- Flows are written back onto the roads and update when free-variable values change. Negative values are reported, never replaced by zero.
+- PDF report, project documentation, viva questions, 21-slide presentation mode, and a PowerPoint in `presentation/`.
 
 ## Run locally
 
-Requirements: Python 3.11+, Node 18+.
+Requirements: Python 3.11+, Node 18+, internet access for map features.
 
 ```bash
-# 1) backend  (http://127.0.0.1:8000, docs at /docs)
+# backend  (http://127.0.0.1:8000, API docs at /docs)
 cd backend
-python -m venv .venv && .venv\Scripts\activate      # Windows   (source .venv/bin/activate on macOS/Linux)
+python -m venv .venv && .venv\Scripts\activate      # Windows  (source .venv/bin/activate elsewhere)
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 
-# 2) frontend (http://localhost:5173) - Vite proxies /api to port 8000
+# frontend (http://localhost:5173; Vite proxies /api to port 8000)
 cd frontend
 npm install
 npm run dev
 ```
 
-On first start the tables are created and the three demonstration networks are inserted (and solved with the real solver).
+The first start creates the tables and, on an empty database only, three demonstration networks (read-only; saving one makes a copy). A database created by version 1 is upgraded automatically (`external_inflow` is renamed to `net_demand` with its sign flipped).
 
-### Configuration
+### Configuration (all optional)
 
-| Variable | Where | Meaning |
+| Variable | Meaning |
+|---|---|
+| `DATABASE_URL` | PostgreSQL URL. Unset: local SQLite file `traffic.db`. |
+| `CORS_ORIGINS` | Allowed browser origins, comma separated. |
+| `SEED_DEMOS` | `0` to start with an empty database. |
+| `PHOTON_URL`, `OSRM_URL`, `OVERPASS_URLS` | Use your own or alternative map services. |
+| `OSM_USER_AGENT` | Identification sent to the map services. Change it if you fork the project. |
+| `MAP_MAX_DISTANCE_M` | Longest pickup–destination distance (default 6000). |
+| `VITE_API_URL`, `VITE_TILE_URL` | Frontend: backend URL and tile server. |
+
+## Map services and their rules
+
+| Purpose | Service | Notes |
 |---|---|---|
-| `DATABASE_URL` | backend | PostgreSQL URL, e.g. `postgresql://user:pw@host:5432/traffic`. **If unset, a local SQLite file `traffic.db` is used.** |
-| `CORS_ORIGINS` | backend | Comma-separated allowed origins (your Vercel URL in production). |
-| `VITE_API_URL` | frontend | Backend base URL in production. Empty in dev. |
+| Tiles | tile.openstreetmap.org | attribution shown; normal browser caching; no bulk download |
+| Autocomplete | Photon | the public Nominatim server forbids autocomplete, so it is not used |
+| Route | OSRM demo server | defines the corridor |
+| Road data | Overpass API (several mirrors) | cached 7 days in `backend/.osm_cache` |
 
-Copy `backend/.env.example` and `frontend/.env.example` to `.env` files to use them.
+These are free community services with no availability guarantee. Overpass in particular can take a minute or fail when busy; the app then says so and offers retry or manual creation. For a live demonstration, generate your example network beforehand (it is then cached and saved).
 
 ## Tests
 
 ```bash
-cd backend  && python -m pytest          # engine, graph, API, persistence, PDF
-cd frontend && npm test                  # Vitest
-cd frontend && npm run build             # type-check + production build
+cd backend  && python -m pytest              # mathematics, map conversion, API, database upgrade
+cd frontend && npm test && npm run build     # graph editing + type check + production build
+cd frontend && node e2e/workflows.mjs all    # both workflows in a real browser (servers running; A needs internet)
+cd frontend && node e2e/buttons.mjs          # the remaining buttons and interactions
 ```
 
-The backend tests assert, with exact arithmetic: `AX = B`, `A·v = 0` for each null-space basis vector, rank + nullity = unknowns, agreement of back-substitution with Gauss-Jordan, and agreement of RREF/rank/null space with SymPy. They cover unique, infinite, inconsistent, under-/over-determined systems, negative-flow infeasibility, disconnected networks, isolated junctions, BFS, CRUD and persistence.
+`TEST_DATABASE_URL=postgresql://…` runs the backend tests against PostgreSQL (its tables are dropped and recreated). The browser script also refreshes the screenshots in `frontend/public/screenshots/`. `python tools/make_ppt.py` (needs `pip install python-pptx Pillow`) rebuilds the PowerPoint from them.
 
-A note on test output: on some Anaconda installs SymPy prints a harmless `gmpy2` DLL warning at start-up; it falls back to pure Python.
+## Layout
 
-## Demonstration networks (verified by tests)
+```
+backend/app/engine      equations, row reduction, solution analysis, validation, pipeline
+backend/app/graph       adjacency lists, BFS, connectivity
+backend/app/services    osm.py (map services), osm_graph.py (OSM -> graph), repository, report
+backend/app             models, migrations, schemas, routers
+frontend/src/lib        graph.ts (every edit operation), useWorkspace.ts
+frontend/src/components ManualCanvas, MapView, Analysis, PropertiesPanel
+frontend/src/pages      Dashboard, CreateMap, Workspace, Documentation, PresentationMode, Settings
+frontend/e2e            browser workflows
+presentation/           FlowMatrix.pptx        tools/make_ppt.py
+```
 
-| Network | Size | Result |
-|---|---|---|
-| 1 Basic | 3 junctions, 3 roads | unique: x1 = 60, x2 = 30 |
-| 2 Intermediate | 3 junctions, 4 roads | x1 = 30 + t, x2 = 70 − t, x3 = t; null space (1, −1, 1); feasible for 0 ≤ t ≤ 70 |
-| 3 Advanced | 5 junctions, 7 roads | rank 4, free x3, x6; strongly connected |
+## Deployment (Render)
 
-## Application pages
+`render.yaml` is a Blueprint for PostgreSQL, the API (`tfna-yashvi-api`) and the static frontend (`tfna-yashvi-web`), which forwards `/api/*` to the API. Free services sleep when idle and Render's free PostgreSQL expires after 30 days. Alternative: frontend on Vercel (`frontend/vercel.json`, set `VITE_API_URL` and `CORS_ORIGINS`).
 
-Dashboard · Create Network (React Flow editor) · Network Library · Mathematical Solver (equations with derivations, A/X/B and [A|B], step-by-step row operations, solution analysis, null space) · Graph Analysis · Solution Reports (PDF) · Team Contributions (editable names) · Project Documentation + Viva Preparation · Presentation Mode (21 slides; arrow keys / space, `F` full screen, `N` notes) · Settings.
+[Deploy to Render](https://render.com/deploy?repo=https://github.com/YashviShah514/traffic-flow-network-analyzer)
 
-## Deployment (Render, one click)
+## Limitations
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/YashviShah514/traffic-flow-network-analyzer)
-
-`render.yaml` is a Blueprint that creates three things: a managed **PostgreSQL** database (`traffic-db`), the **FastAPI** backend (`tfna-yashvi-api`, `DATABASE_URL` is injected automatically) and the **React** frontend as a static site (`tfna-yashvi-web`) that forwards `/api/*` to the backend, so no CORS or `VITE_API_URL` setup is needed.
-
-1. Sign in at render.com, open the link above (or *New -> Blueprint* and pick this repository) and click **Apply**.
-2. Wait for the three resources to finish building (first backend build takes a few minutes: SciPy/SymPy).
-3. Open the URL of **tfna-yashvi-web**. The three demo networks are created automatically on the first backend start.
-
-Notes: the backend rewrite target in `render.yaml` assumes the API's URL is `https://tfna-yashvi-api.onrender.com`; if Render adds a suffix because the name is taken, edit that line to your real backend URL. Free web services sleep after inactivity (the first request takes ~1 minute) and Render's free PostgreSQL expires after 30 days - upgrade the plan for anything long-lived.
-
-Alternative: frontend on Vercel (`frontend/vercel.json`, set `VITE_API_URL` to the backend URL and `CORS_ORIGINS` on the backend).
-
-## Responsive design
-
-The UI adapts from 360 px phones to 1920 px desktops: a drawer menu below 1024 px, stacked layouts on narrow screens, the network editor's property panel becomes a bottom sheet below 1280 px, tables become card lists on phones, finger-sized targets and 16 px inputs on touch devices (no iOS zoom-on-focus), safe-area padding for notched phones, and the editor canvas fills tall desktop screens. Presentation Mode scales its 16:9 slides to any screen, supports swipe left/right, shows a "rotate your phone" hint in portrait and hides the Fullscreen button where the browser has no Fullscreen API (iPhone Safari).
-
-## Verification status
-
-| Check | Result |
-|---|---|
-| Backend tests (`pytest`) | 32 pass on SQLite **and** on PostgreSQL 19 (`TEST_DATABASE_URL`) |
-| Frontend tests (`vitest`) + `tsc` + `vite build` | 10 pass, type-check and build clean |
-| PostgreSQL constraints | CHECK(flow >= 0), CHECK(source <> target) and UNIQUE(network, key) verified to reject bad rows |
-| Browser walkthrough (Edge, Playwright) | dashboard, library, editor (add junction, drag-to-connect, drag node, edit, save), all five solver tabs, graph page, PDF download, team/docs/viva/settings, all 21 slides, reload persistence - zero console errors; phone width has no horizontal scroll |
-| Responsive layout | audited at 360, 390, 768, 1024, 1440 and 1920 px across all 15 screens: no horizontal overflow; touch tests (bottom sheet, drawer, swipe, landscape) pass |
-| PDF report | generated and rendered; contents checked page by page |
-
-Bugs found and fixed during this verification: the null space was hidden when `AX = B` was inconsistent (it depends only on `A`); the PDF crashed for roads without a label; saving an edited demo network overwrote the demo (demos are now read-only, "Save" stores a copy); new junctions could spawn under UI overlays.
-
-To run the tests against PostgreSQL: `TEST_DATABASE_URL=postgresql://user:pw@host:5432/dbname python -m pytest` (the tables of that database are dropped and recreated).
-
-## Known limitations (honest status)
-
-- Deployment is configured (`render.yaml`) but must be applied from your own Render account; it was not deployed from the development machine.
-- There is no authentication: all networks belong to a single default `demo` user (the `users` table is in place).
-- The shadcn/ui-style components are hand-written following shadcn conventions (cva + `cn`), not generated by the shadcn CLI.
-- Feasible-range numbers come from a floating-point linear program; all algebra is exact.
-- Team member names are stored in the browser (`localStorage`), not in the database.
-- Steady-state flows only (no capacities, travel times or time series).
-- Frontend unit tests are light (helpers, components, slide navigation); the interactive flows were verified with the browser walkthrough above, which is not part of the repository's test suite.
+- Static flows only: no capacities, travel times or turn restrictions.
+- Map data does not know how many vehicles enter or leave at the edge of an extract; those demands must be entered.
+- Roads are clipped to a corridor around the route; by default dead-end side streets are left out, points within 20 m are merged into one junction, and pieces connected to neither place are dropped (all reported).
+- Map-based generation depends on public services.
+- Per-road feasible ranges are floating-point linear programs and are skipped above 160 unknowns.
+- No user authentication; all data belongs to one default user.
+- The shadcn-style UI components are hand-written.

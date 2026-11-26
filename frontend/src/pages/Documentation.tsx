@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Badge, Card, CardContent, CardHeader, CardTitle, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/ui";
 import { DOCS } from "@/content/docs";
-import { ROLES } from "@/content/roles";
 import { VIVA, type Level } from "@/content/viva";
 
 const TONE: Record<Level, "green" | "amber" | "red"> = { Beginner: "green", Intermediate: "amber", Advanced: "red" };
@@ -28,12 +27,6 @@ function Viva() {
           </CardContent></Card>
         );
       })}
-      <h3 className="pt-2 text-lg font-semibold">What each team member should know</h3>
-      {ROLES.map((r) => (
-        <Card key={r.id}><CardHeader><CardTitle>{r.name}</CardTitle></CardHeader><CardContent className="grid gap-4 text-sm md:grid-cols-2">
-          <div><b>Must be able to explain</b><ul className="list-disc pl-5">{r.talking.map((t) => <li key={t}>{t}</li>)}</ul></div>
-          <div><b>Practice questions</b><ul className="list-disc pl-5">{r.viva.map((t) => <li key={t}>{t}</li>)}</ul></div>
-        </CardContent></Card>))}
     </div>
   );
 }
@@ -41,20 +34,27 @@ function Viva() {
 export default function Documentation() {
   return (
     <>
-      <PageHeader title="Project Documentation" subtitle="Academic documentation of the implemented system, plus viva preparation." />
+      <PageHeader title="Project Documentation" subtitle="Documentation of the implemented system, plus viva preparation." />
       <Tabs defaultValue="docs">
         <TabsList><TabsTrigger value="docs">Documentation</TabsTrigger><TabsTrigger value="viva">Viva preparation</TabsTrigger></TabsList>
         <TabsContent value="docs">
           <label className="mb-4 block lg:hidden"><span className="mb-1 block text-xs font-medium text-slate-600">Jump to section</span>
             <select className="h-10 w-full rounded-lg border border-slate-300 bg-white px-2 dark:bg-navy-800" defaultValue="" onChange={(e) => e.target.value && document.getElementById(e.target.value)?.scrollIntoView({ behavior: "smooth" })}>
               <option value="">Choose…</option>{DOCS.map((d, i) => <option key={d.title} value={`doc-${i}`}>{i + 1}. {d.title}</option>)}</select></label>
-          <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
-            <nav className="hidden lg:block"><ul className="sticky top-6 space-y-1 text-sm">
+          <div className="grid gap-6 lg:grid-cols-[230px_1fr]">
+            <nav className="hidden lg:block"><ul className="sticky top-4 max-h-[calc(100dvh-2rem)] space-y-1 overflow-y-auto text-sm">
               {DOCS.map((d, i) => <li key={d.title}><a className="text-slate-600 hover:text-brand-700 dark:text-slate-300" href={`#doc-${i}`}>{i + 1}. {d.title}</a></li>)}</ul></nav>
-            <div className="space-y-4">
+            <div className="min-w-0 space-y-4">
               {DOCS.map((d, i) => (
                 <Card key={d.title} id={`doc-${i}`}><CardHeader><CardTitle>{i + 1}. {d.title}</CardTitle></CardHeader>
-                  <CardContent className="space-y-2 text-sm leading-relaxed text-slate-700 dark:text-slate-300">{d.body.map((p, k) => <p key={k}>{p}</p>)}</CardContent></Card>))}
+                  <CardContent className="space-y-2 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                    {d.body.map((p, k) => <p key={k}>{p}</p>)}
+                    {d.images?.map((img) => (
+                      <figure key={img.src} className="pt-2">
+                        <img src={img.src} alt={img.caption} loading="lazy" className="w-full rounded-lg border border-slate-200 dark:border-navy-700" />
+                        <figcaption className="mt-1 text-xs text-slate-500">{img.caption}</figcaption>
+                      </figure>))}
+                  </CardContent></Card>))}
             </div>
           </div>
         </TabsContent>

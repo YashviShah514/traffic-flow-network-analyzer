@@ -6,14 +6,19 @@ from fractions import Fraction
 
 from .linalg import Reduction, back_substitution, fmt, mat_vec, Matrix
 
+# Above this many unknowns the per-road min/max linear programs are skipped.
+MAX_RANGE_VARIABLES = 160
+
 
 def analyse(red: Reduction, n_vars: int, var_names: list[str]) -> dict:
     rref = red.rref
     pivots = red.pivot_cols
+    pivot_set = set(pivots)
     inconsistent_rows = [i for i, row in enumerate(rref)
-                         if all(v == 0 for v in row[:n_vars]) and row[n_vars] != 0]
+                         if row[n_vars] != 0 and not any(row[:n_vars])]
     consistent = not inconsistent_rows
-    free = [c for c in range(n_vars) if c not in pivots]
+    free = [c for c in range(n_vars) if c not in pivot_set]
+
     # The null space depends on A only (AX = 0), so it exists whether or not AX = B is consistent.
     basis: list[list[Fraction]] = []
     for f in free:
@@ -36,10 +41,12 @@ def analyse(red: Reduction, n_vars: int, var_names: list[str]) -> dict:
         "classification": classification,
         "consistent": consistent,
         "rank": red.rank,
+        "independent_equations": red.rank,
         "n_unknowns": n_vars,
         "n_equations": len(rref),
         "nullity": n_vars - red.rank,
-        "pivot_columns": [var_names[c] for c in pivots],
+        "pivot_columns": [c + 1 for c in pivots],
+        "pivot_variables": [var_names[c] for c in pivots],
         "free_variables": [var_names[c] for c in free],
         "inconsistent_rows": [i + 1 for i in inconsistent_rows],
         "null_basis": result_null,
@@ -49,6 +56,7 @@ def analyse(red: Reduction, n_vars: int, var_names: list[str]) -> dict:
     if not consistent:
         result["particular"] = None
         result["general_solution"] = []
+        result["constraints"] = []
         return result
 
     particular = [Fraction(0)] * n_vars
@@ -56,27 +64,42 @@ def analyse(red: Reduction, n_vars: int, var_names: list[str]) -> dict:
         particular[c] = rref[r][n_vars]
     result["particular"] = [fmt(v) for v in particular]
     # x_i = p_i + sum_k t_k * v_k[i]
-    gs = []
+    free_pos = {f: k for k, f in enumerate(free)}
+    gs, constraints = [], []
     for i in range(n_vars):
         terms = [{"parameter": f"t{k + 1}", "coefficient": fmt(basis[k][i])} for k in range(len(basis)) if basis[k][i] != 0]
-        if i in free:
-            text = f"{var_names[i]} = t{free.index(i) + 1} (free)"
+        expr = _expression(particular[i], terms)
+        if i in free_pos:
+            text = f"{var_names[i]} = t{free_pos[i] + 1} (free)"
         else:
-            text = f"{var_names[i]} = {fmt(particular[i])}"
-            for t in terms:
-                c = Fraction(t["coefficient"])
-                text += f" {'-' if c < 0 else '+'} " + ("" if abs(c) == 1 else fmt(abs(c)) + "*") + t["parameter"]
+            text = f"{var_names[i]} = {expr}"
         gs.append({"variable": var_names[i], "constant": fmt(particular[i]), "terms": terms,
-                   "is_free": i in free, "text": text})
+                   "is_free": i in free_pos, "expression": expr, "text": text})
+        if terms:  # nonnegativity of this road restricts the parameters
+            constraints.append({"variable": var_names[i], "text": f"{expr} ≥ 0"})
     result["general_solution"] = gs
+    result["constraints"] = constraints
     result["_particular"] = particular
     return result
+
+
+def _expression(constant: Fraction, terms: list[dict]) -> str:
+    out = "" if constant == 0 and terms else fmt(constant)
+    for t in terms:
+        c = Fraction(t["coefficient"])
+        body = ("" if abs(c) == 1 else fmt(abs(c)) + "·") + t["parameter"]
+        if not out:
+            out = ("-" if c < 0 else "") + body
+        else:
+            out += f" {'-' if c < 0 else '+'} {body}"
+    return out
 
 
 def instantiate(particular: list[Fraction], basis: list[list[Fraction]], params: list[Fraction]) -> list[Fraction]:
     x = particular[:]
     for t, v in zip(params, basis):
-        x = [xi + t * vi for xi, vi in zip(x, v)]
+        if t:
+            x = [xi + t * vi if vi else xi for xi, vi in zip(x, v)]
     return x
 
 
@@ -85,27 +108,30 @@ def feasibility(A: Matrix, B: list[Fraction], n_vars: int) -> dict:
     unknown flow over all nonnegative solutions? (LP via SciPy, floating point.)"""
     if n_vars == 0:
         ok = all(b == 0 for b in B)
-        return {"exists": ok, "ranges": {}, "point": [], "method": "trivial"}
+        return {"exists": ok, "ranges": {}, "point": [], "method": "trivial", "ranges_skipped": False}
     try:
         import numpy as np
         from scipy.optimize import linprog
     except Exception:  # pragma: no cover
-        return {"exists": None, "ranges": {}, "point": None, "method": "unavailable"}
+        return {"exists": None, "ranges": {}, "point": None, "method": "unavailable", "ranges_skipped": True}
     Af = np.array([[float(v) for v in row] for row in A])
     bf = np.array([float(b) for b in B])
     bounds = [(0, None)] * n_vars
     res = linprog(np.zeros(n_vars), A_eq=Af, b_eq=bf, bounds=bounds, method="highs")
     if res.status != 0:
-        return {"exists": False, "ranges": {}, "point": None, "method": "linprog-highs"}
+        return {"exists": False, "ranges": {}, "point": None, "method": "linprog-highs", "ranges_skipped": False}
     ranges = {}
-    for i in range(n_vars):
-        c = np.zeros(n_vars)
-        c[i] = 1
-        lo = linprog(c, A_eq=Af, b_eq=bf, bounds=bounds, method="highs")
-        hi = linprog(-c, A_eq=Af, b_eq=bf, bounds=bounds, method="highs")
-        ranges[i] = {"min": round(float(lo.fun), 6) + 0.0 if lo.status == 0 else None,
-                     "max": round(float(-hi.fun), 6) + 0.0 if hi.status == 0 else None}  # None = unbounded
-    return {"exists": True, "ranges": ranges, "point": [float(v) for v in res.x], "method": "linprog-highs"}
+    skipped = n_vars > MAX_RANGE_VARIABLES
+    if not skipped:
+        for i in range(n_vars):
+            c = np.zeros(n_vars)
+            c[i] = 1
+            lo = linprog(c, A_eq=Af, b_eq=bf, bounds=bounds, method="highs")
+            hi = linprog(-c, A_eq=Af, b_eq=bf, bounds=bounds, method="highs")
+            ranges[i] = {"min": round(float(lo.fun), 6) + 0.0 if lo.status == 0 else None,
+                         "max": round(float(-hi.fun), 6) + 0.0 if hi.status == 0 else None}  # None = unbounded
+    return {"exists": True, "ranges": ranges, "point": [float(v) for v in res.x], "method": "linprog-highs",
+            "ranges_skipped": skipped}
 
 
 def nearest_feasible_parameters(particular, basis, free, point) -> list[Fraction] | None:
@@ -124,7 +150,7 @@ def nearest_feasible_parameters(particular, basis, free, point) -> list[Fraction
 def verify(A: Matrix, B: list[Fraction], red: Reduction, info: dict, n_vars: int, x: list[Fraction] | None) -> dict:
     """Independent checks. Every check is reported with a boolean."""
     checks: dict = {}
-    checks["null_vectors_satisfy_Av_0"] = all(all(c == 0 for c in mat_vec(A, v)) for v in info["_basis"]) if n_vars else True
+    checks["null_vectors_satisfy_Av_0"] = all(not any(mat_vec(A, v)) for v in info["_basis"]) if n_vars else True
     checks["rank_plus_nullity_equals_unknowns"] = info["rank"] + info["nullity"] == n_vars
     if info["consistent"] and x is not None:
         checks["AX_equals_B"] = mat_vec(A, x) == B if n_vars else all(b == 0 for b in B)
@@ -137,27 +163,30 @@ def verify(A: Matrix, B: list[Fraction], red: Reduction, info: dict, n_vars: int
 
 
 def _sympy_check(A, B, red, info, n_vars) -> dict:
+    """Cross-check with SymPy's DomainMatrix (exact rationals, fast enough for large networks)."""
     if n_vars == 0 or not A:
         return {"skipped": True, "agrees": True}
-    import sympy as sp
-    M = sp.Matrix([[sp.Rational(v.numerator, v.denominator) for v in row] for row in A])
-    aug = M.row_join(sp.Matrix([sp.Rational(b.numerator, b.denominator) for b in B]))
-    sp_rref, sp_piv = aug.rref()
-    sp_pivots = [p for p in sp_piv if p < n_vars]
-    mine = sp.Matrix([[sp.Rational(v.numerator, v.denominator) for v in row] for row in red.rref])
+    from sympy import QQ
+    from sympy.polys.matrices import DomainMatrix
+
+    def dm(rows, ncols):
+        return DomainMatrix([[QQ(v.numerator, v.denominator) for v in r] for r in rows], (len(rows), ncols), QQ)
+
+    aug_rref, aug_pivots = dm([row + [b] for row, b in zip(A, B)], n_vars + 1).to_sparse().rref()
+    sp_pivots = [p for p in aug_pivots if p < n_vars]
+    mine = dm(red.rref, n_vars + 1)
     out = {
-        "rank_matches": M.rank() == red.rank,
+        "rank_matches": len(sp_pivots) == red.rank,
         "pivots_match": sorted(sp_pivots) == sorted(red.pivot_cols),
-        "rref_matches": mine == sp_rref,
-        "consistent_matches": (n_vars not in sp_piv) == info["consistent"],
+        "rref_matches": aug_rref.to_dense() == mine,
+        "consistent_matches": (n_vars not in aug_pivots) == info["consistent"],
     }
-    ns = M.nullspace()
-    out["nullity_matches"] = len(ns) == info["nullity"]
-    if True:
-        # same subspace: stack my basis with SymPy's -> rank must not grow
-        if ns:
-            mine_b = sp.Matrix([[sp.Rational(c.numerator, c.denominator) for c in v] for v in info["_basis"]])
-            sp_b = sp.Matrix.hstack(*ns).T
-            out["nullspace_matches"] = mine_b.rank() == sp_b.rank() == sp.Matrix.vstack(mine_b, sp_b).rank()
+    nullity = n_vars - len(sp_pivots)
+    out["nullity_matches"] = nullity == info["nullity"]
+    if info["nullity"] and len(A) and n_vars <= 250:
+        ns = dm(A, n_vars).to_sparse().nullspace().to_dense()
+        my_basis = dm(info["_basis"], n_vars)
+        stacked = ns.vstack(my_basis)
+        out["nullspace_matches"] = my_basis.rank() == ns.rank() == stacked.rank()
     out["agrees"] = all(v for v in out.values() if isinstance(v, bool))
     return out

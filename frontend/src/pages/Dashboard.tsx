@@ -1,79 +1,105 @@
-import { Activity, GitBranch, Plus, Route as RoadIcon, Sigma, Waypoints } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Alert, Button, Card, CardContent, CardHeader, CardTitle, PageHeader } from "@/components/ui/ui";
+import { CheckCircle2, GitBranch, Map as MapIcon, PenTool, Plus, Trash2, Waypoints, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Alert, Badge, Button, Card, CardContent, PageHeader } from "@/components/ui/ui";
 import { api } from "@/lib/api";
-import type { Dashboard as D } from "@/lib/types";
+import { readDraft, storeDraft } from "@/lib/useWorkspace";
+import type { Dashboard as D, NetworkSummary } from "@/lib/types";
+import { STATE_BADGE } from "./Workspace";
 
-function Stat({ icon: Icon, label, value, tone }: { icon: any; label: string; value: number; tone: string }) {
+function Stat({ icon: Icon, label, value }: { icon: typeof Waypoints; label: string; value: number }) {
   return (
     <Card><CardContent className="flex items-center gap-4 pt-5">
-      <div className={`grid h-11 w-11 place-items-center rounded-xl ${tone}`}><Icon size={22} /></div>
-      <div><div className="text-2xl font-bold">{value}</div><div className="text-xs text-slate-500">{label}</div></div>
+      <div className="grid h-11 w-11 place-items-center rounded-xl bg-brand-100 text-brand-700"><Icon size={22} /></div>
+      <div><div className="text-3xl font-bold" data-testid={`stat-${label}`}>{value}</div><div className="text-sm text-slate-500">{label}</div></div>
     </CardContent></Card>
   );
 }
 
+export function CreateDialog({ onClose }: { onClose: () => void }) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+  const manual = () => {
+    if (readDraft()?.junctions.length && !confirm("Discard your unsaved network and start a blank one?")) return;
+    storeDraft(null);
+    navigate("/network/new?method=manual");
+  };
+  const choice = "flex flex-col items-start gap-2 rounded-2xl border-2 border-slate-200 p-5 text-left transition hover:border-brand-500 hover:bg-brand-50 dark:border-navy-700 dark:hover:bg-navy-800";
+  return (
+    <div className="fixed inset-0 z-[1200] grid place-items-center bg-black/50 p-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label="Create New Network" className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl dark:bg-navy-900" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-bold">Create New Network</h2>
+          <Button size="icon" variant="ghost" aria-label="Close" onClick={onClose}><X size={18} /></Button></div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button autoFocus className={choice} onClick={() => navigate("/create/map")}><MapIcon className="text-brand-700" size={28} /><span className="font-semibold">Automatic Map-Based Network</span>
+            <span className="text-sm text-slate-500">Pick two places; real roads come from OpenStreetMap.</span></button>
+          <button className={choice} onClick={manual}><PenTool className="text-brand-700" size={28} /><span className="font-semibold">Manual Network Creation</span>
+            <span className="text-sm text-slate-500">Draw junctions and roads on a blank canvas.</span></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
-  const [d, setD] = useState<D | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { api.dashboard().then(setD).catch((e) => setErr(e.message)); }, []);
+  const [data, setData] = useState<D | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const navigate = useNavigate();
+  const draft = readDraft();
+  const refresh = useCallback(() => api.dashboard().then((d) => { setData(d); setError(null); }).catch((e) => setError(e.message)), []);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const remove = async (n: NetworkSummary) => {
+    if (!confirm(`Delete “${n.name}” and its stored solutions?`)) return;
+    try { await api.deleteNetwork(n.id); await refresh(); } catch (e: any) { setError(e.message); }
+  };
+
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="Live statistics read from the database."
-        actions={<Link to="/builder"><Button><Plus size={16} />Quick create network</Button></Link>} />
-      {err && <Alert tone="error">{err}</Alert>}
-      {d && (
+      <PageHeader title="Dashboard" actions={<Button size="lg" onClick={() => setCreating(true)}><Plus size={18} />Create New Network</Button>} />
+      {creating && <CreateDialog onClose={() => setCreating(false)} />}
+      {error && <Alert tone="error">{error} <button className="underline" onClick={refresh}>Retry</button></Alert>}
+      {!data && !error && <p className="text-slate-500">Loading…</p>}
+      {draft && draft.junctions.length > 0 && <div className="mb-4"><Alert tone="warn">You have an unsaved network “{draft.name}”.{" "}
+        <button className="font-semibold underline" onClick={() => navigate("/network/new")}>Continue editing</button></Alert></div>}
+      {data && (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <Stat icon={Waypoints} label="Total networks" value={d.total_networks} tone="bg-brand-100 text-brand-700" />
-            <Stat icon={GitBranch} label="Total junctions" value={d.total_junctions} tone="bg-cyan2-100 text-cyan-800" />
-            <Stat icon={RoadIcon} label="Total roads" value={d.total_roads} tone="bg-brand-100 text-brand-700" />
-            <Stat icon={Sigma} label="Solved networks" value={d.solved_networks} tone="bg-emerald-100 text-emerald-700" />
-            <Stat icon={Activity} label="With free variables" value={d.networks_with_free_variables} tone="bg-amber-100 text-amber-700" />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Stat icon={Waypoints} label="Total Networks" value={data.total_networks} />
+            <Stat icon={GitBranch} label="Total Junctions" value={data.total_junctions} />
+            <Stat icon={CheckCircle2} label="Solved Networks" value={data.solved_networks} />
           </div>
-          <div className="grid gap-6 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <CardHeader><CardTitle>Network size</CardTitle></CardHeader>
-              <CardContent>
-                <div className="h-64">
-                  <ResponsiveContainer>
-                    <BarChart data={d.per_network.map((n) => ({ ...n, name: n.name.split(" - ")[0] }))}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis dataKey="name" fontSize={12} /><YAxis allowDecimals={false} fontSize={12} />
-                      <Tooltip /><Legend />
-                      <Bar dataKey="junctions" fill="#0b1f3a" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="roads" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader><CardTitle>Recent activity</CardTitle></CardHeader>
-              <CardContent>
-                <ul className="space-y-3 text-sm">
-                  {d.recent_activity.length === 0 && <li className="text-slate-500">Nothing yet.</li>}
-                  {d.recent_activity.map((a, i) => (
-                    <li key={i} className="flex gap-2"><span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${a.type === "solution" ? "bg-emerald-500" : "bg-brand-500"}`} />
-                      <div><div className="font-medium">{a.title}</div>
-                        <div className="text-xs text-slate-500">{a.type === "solution" ? `classification: ${a.detail} · ` : "saved · "}{new Date(a.at).toLocaleString()}</div></div></li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          </div>
-          <Card>
-            <CardHeader><CardTitle>Project overview</CardTitle></CardHeader>
-            <CardContent className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-              At every junction the traffic entering must equal the traffic leaving. Each junction therefore gives one linear
-              equation; sensors fix some road flows and the rest become unknowns. Row reduction (Gaussian / Gauss-Jordan) on the
-              augmented matrix [A | B] classifies the system, exposes free variables and the null space (circulating traffic), and
-              breadth-first search analyses connectivity. Classification so far:{" "}
-              {Object.entries(d.classification_counts).map(([k, v]) => `${k}: ${v}`).join(", ")}.
-            </CardContent>
-          </Card>
+          <section aria-labelledby="saved">
+            <h2 id="saved" className="mb-3 text-lg font-semibold">Saved networks</h2>
+            {data.networks.length === 0 ? (
+              <Card><CardContent className="pt-5 text-center text-slate-500">No networks yet. Use <b>Create New Network</b> to begin.</CardContent></Card>
+            ) : (
+              <ul className="space-y-3">
+                {data.networks.map((n) => (
+                  <li key={n.id} data-testid="network-row">
+                    <Card className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4">
+                      <div className="min-w-0 flex-1 basis-64">
+                        <div className="truncate font-semibold">{n.name}</div>
+                        <div className="text-xs text-slate-500">Created {new Date(n.created_at).toLocaleDateString()} · {n.method === "map" ? "Automatic (map)" : "Manual"}{n.is_demo && " · demo"}</div>
+                      </div>
+                      <div className="text-sm text-slate-600 dark:text-slate-300">{n.junctions} junctions · {n.roads} roads</div>
+                      <div className="w-36"><Badge tone={STATE_BADGE[n.status.state].tone}>{STATE_BADGE[n.status.state].label}</Badge></div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => navigate(`/network/${n.id}`)}>Open</Button>
+                        <Button size="sm" variant="outline" onClick={() => navigate(`/network/${n.id}?edit=1`)}>Edit</Button>
+                        <Button size="sm" variant="ghost" className="text-red-600" onClick={() => remove(n)} aria-label={`Delete ${n.name}`}><Trash2 size={14} />Delete</Button>
+                      </div>
+                    </Card>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       )}
     </>

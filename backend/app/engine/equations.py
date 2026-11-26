@@ -1,13 +1,17 @@
 """
 Flow-conservation equation and matrix generator.
 
-Convention (physically correct):
-    incoming + external_inflow = outgoing
-=>  incoming - outgoing = -external_inflow
-where ``external_inflow`` is the NET traffic entering the junction from outside
-the modelled network (positive = enters, negative = leaves the network).
+Convention
+----------
+    incoming flow - outgoing flow = D
+
+where D is the junction's **net external demand**: the net number of vehicles
+that leave the modelled network at that junction (positive = vehicles exit
+here, negative = vehicles enter here). This is the same statement as
+"vehicles in = vehicles out" once the external traffic is counted.
+
 Known (sensor) road flows are moved to the right-hand side; only unknown roads
-become variables x1, x2, ... (numbered in road order).
+become variables x1, x2, ... numbered in road order.
 """
 from __future__ import annotations
 
@@ -25,7 +29,7 @@ class NetworkError(ValueError):
 class JunctionIn:
     key: str
     name: str
-    external_inflow: Fraction = Fraction(0)
+    net_demand: Fraction = Fraction(0)
 
 
 @dataclass
@@ -38,6 +42,7 @@ class RoadIn:
 
 
 def validate(junctions: list[JunctionIn], roads: list[RoadIn]) -> None:
+    """Hard structural checks. The solver refuses to run if any of these fail."""
     if not junctions:
         raise NetworkError("Network needs at least one junction.")
     keys = [j.key for j in junctions]
@@ -82,6 +87,11 @@ def equation_text(coeffs: dict[str, Fraction], rhs: Fraction) -> str:
     return f"{s or '0'} = {fmt(rhs)}"
 
 
+def _side(names: list[str], values: list[Fraction]) -> str:
+    parts = names + [fmt(v) for v in values]
+    return " + ".join(parts) if parts else "0"
+
+
 @dataclass
 class SystemBuild:
     variables: list[dict]   # [{name, road_key, source, target, label}]
@@ -95,56 +105,62 @@ def build_system(junctions: list[JunctionIn], roads: list[RoadIn]) -> SystemBuil
     validate(junctions, roads)
     names = variable_names(roads)
     var_list = [r for r in roads if r.known_flow is None]
-    var_index = {names[r.key]: i for i, r in enumerate(var_list)}
     variables = [{"name": names[r.key], "road_key": r.key, "source": r.source,
                   "target": r.target, "label": r.label} for r in var_list]
     jname = {j.key: j.name for j in junctions}
+    index = {r.key: i for i, r in enumerate(var_list)}
+    into: dict[str, list[RoadIn]] = {j.key: [] for j in junctions}
+    outof: dict[str, list[RoadIn]] = {j.key: [] for j in junctions}
+    for r in roads:
+        into[r.target].append(r)
+        outof[r.source].append(r)
 
     equations, A, B = [], [], []
     for j in junctions:
-        incoming = [r for r in roads if r.target == j.key]
-        outgoing = [r for r in roads if r.source == j.key]
-        coeffs: dict[str, Fraction] = {v["name"]: Fraction(0) for v in variables}
-        known_in = Fraction(0)
-        known_out = Fraction(0)
+        incoming, outgoing = into[j.key], outof[j.key]
+        row = [Fraction(0)] * len(var_list)
+        known_in = known_out = Fraction(0)
+        for r in incoming:
+            if r.known_flow is None:
+                row[index[r.key]] += 1
+            else:
+                known_in += r.known_flow
+        for r in outgoing:
+            if r.known_flow is None:
+                row[index[r.key]] -= 1
+            else:
+                known_out += r.known_flow
+        # in - out = D  =>  (unknown in) - (unknown out) = D - known_in + known_out
+        rhs = j.net_demand - known_in + known_out
+        A.append(row)
+        B.append(rhs)
 
         def desc(r: RoadIn) -> dict:
             return {"road_key": r.key, "label": r.label, "from": jname[r.source], "to": jname[r.target],
                     "variable": names.get(r.key), "known_flow": None if r.known_flow is None else fmt(r.known_flow)}
 
-        for r in incoming:
-            if r.known_flow is None:
-                coeffs[names[r.key]] += 1
-            else:
-                known_in += r.known_flow
-        for r in outgoing:
-            if r.known_flow is None:
-                coeffs[names[r.key]] -= 1
-            else:
-                known_out += r.known_flow
-        # incoming - outgoing = -external  =>  unknown part = -ext - known_in + known_out
-        rhs = -j.external_inflow - known_in + known_out
-        row = [coeffs[v["name"]] for v in variables]
-        A.append(row)
-        B.append(rhs)
-        nz = {k: v for k, v in coeffs.items() if v != 0}
+        coeffs = {names[r.key]: row[index[r.key]] for r in incoming + outgoing if r.known_flow is None}
+        coeffs = dict(sorted(coeffs.items(), key=lambda kv: int(kv[0][1:])))
+        in_vars = [names[r.key] for r in incoming if r.known_flow is None]
+        out_vars = [names[r.key] for r in outgoing if r.known_flow is None]
+        in_known = [r.known_flow for r in incoming if r.known_flow is not None]
+        out_known = [r.known_flow for r in outgoing if r.known_flow is not None]
         equations.append({
             "junction_key": j.key,
             "junction_name": j.name,
             "incoming": [desc(r) for r in incoming],
             "outgoing": [desc(r) for r in outgoing],
-            "external_inflow": fmt(j.external_inflow),
+            "net_demand": fmt(j.net_demand),
             "known_in_sum": fmt(known_in),
             "known_out_sum": fmt(known_out),
-            "coefficients": {k: fmt(v) for k, v in coeffs.items()},
+            "coefficients": {k: fmt(v) for k, v in coeffs.items() if v != 0},
             "rhs": fmt(rhs),
-            "text": equation_text(nz, rhs),
+            "text": equation_text(coeffs, rhs),
             "derivation": [
-                f"Conservation at {j.name}: incoming + external inflow = outgoing.",
-                f"Known incoming = {fmt(known_in)}, known outgoing = {fmt(known_out)}, external net inflow = {fmt(j.external_inflow)}.",
-                "Unknown incoming variables: " + (", ".join(names[r.key] for r in incoming if r.key in names) or "none")
-                + "; unknown outgoing variables: " + (", ".join(names[r.key] for r in outgoing if r.key in names) or "none") + ".",
-                f"(unknown incoming) - (unknown outgoing) = -({fmt(j.external_inflow)}) - {fmt(known_in)} + {fmt(known_out)} = {fmt(rhs)}.",
+                f"Conservation at {j.name}: incoming - outgoing = D, with net external demand D = {fmt(j.net_demand)}.",
+                f"Substituting the roads: ({_side(in_vars, in_known)}) - ({_side(out_vars, out_known)}) = {fmt(j.net_demand)}.",
+                f"Move known flows to the right: (unknown in) - (unknown out) = {fmt(j.net_demand)} - {fmt(known_in)} + {fmt(known_out)} = {fmt(rhs)}.",
+                f"Equation: {equation_text(coeffs, rhs)}.",
             ],
         })
     aug = [row + [b] for row, b in zip(A, B)]
