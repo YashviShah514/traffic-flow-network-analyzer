@@ -15,7 +15,7 @@ incoming flow − outgoing flow = D
 ## Features
 
 - **Dashboard:** total networks, total junctions, solved networks (all computed from the database), *Create New Network*, and the saved networks with Open / Edit / Delete.
-- **Automatic map creation:** address autocomplete for pickup and destination (or click / drag on the map), real roads from OpenStreetMap in a corridor around the driving route, one-way rules preserved, real road geometry.
+- **Automatic map creation:** choose Location 1 and Location 2 (autocomplete, click or drag); the real roads in a corridor around the driving route are converted automatically into a clean graph (vertices V1…, edges E1…) with one-way rules and real road shapes; map view and graph view; boundary junctions with your own traffic counts or clearly labelled sample values. The conversion is rule based, not AI.
 - **Manual creation:** click to add junctions, click two junctions (or drag) to connect them, edit demands, names, measured flows and direction.
 - **One workspace page per network:** the map or canvas on top; below it 15 analysis sections (validation, junctions, equations, A, [A|B], Gaussian elimination, row-operation history, REF/RREF, rank, pivot and free variables, classification, general solution, null space, example solution, final network).
 - Flows are written back onto the roads and update when free-variable values change. Negative values are reported, never replaced by zero.
@@ -49,7 +49,7 @@ The first start creates the tables and, on an empty database only, three demonst
 | `SEED_DEMOS` | `0` to start with an empty database. |
 | `PHOTON_URL`, `OSRM_URL`, `OVERPASS_URLS` | Use your own or alternative map services. |
 | `OSM_USER_AGENT` | Identification sent to the map services. Change it if you fork the project. |
-| `MAP_MAX_DISTANCE_M` | Longest pickup–destination distance (default 6000). |
+| `MAP_MAX_DISTANCE_M` | Longest distance between Location 1 and Location 2 (default 6000). |
 | `VITE_API_URL`, `VITE_TILE_URL` | Frontend: backend URL and tile server. |
 
 ## Map services and their rules
@@ -98,7 +98,7 @@ presentation/           FlowMatrix.pptx        tools/make_ppt.py
 
 - Static flows only: no capacities, travel times or turn restrictions.
 - Map data does not know how many vehicles enter or leave at the edge of an extract; those demands must be entered.
-- Roads are clipped to a corridor around the route; by default dead-end side streets are left out, points within 20 m are merged into one junction, and pieces connected to neither place are dropped (all reported).
+- Roads are clipped to a corridor around the route; by default dead-end side streets are left out, points within 20 m are merged into one junction, duplicates and pass-through points are removed and pieces connected to neither place are dropped (all reported).
 - Map-based generation depends on public services.
 - Per-road feasible ranges are floating-point linear programs and are skipped above 160 unknowns.
 - No user authentication; all data belongs to one default user.

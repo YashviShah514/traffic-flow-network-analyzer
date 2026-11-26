@@ -163,7 +163,7 @@ def test_geocode_and_map_errors_are_reported(client, monkeypatch):
     monkeypatch.setattr(osm, "search_places", boom)
     r = client.get("/api/geocode", params={"q": "college"})
     assert r.status_code == 502 and "retry" in r.json()["detail"]
-    far = {"pickup": {"lat": 23.0, "lng": 72.5}, "destination": {"lat": 24.0, "lng": 72.5}}
+    far = {"start": {"lat": 23.0, "lng": 72.5}, "end": {"lat": 24.0, "lng": 72.5}}
     r = client.post("/api/map/network", json=far)
     assert r.status_code == 422 and "limit" in r.json()["detail"]
 
@@ -187,3 +187,28 @@ def test_pdf_report_shows_the_chosen_solution(client):
     text = " ".join(" ".join(page.get_text() for page in pymupdf.open(stream=r.content, filetype="pdf")).split())
     assert "x1 = 30 + t1" in text and "Chosen parameter values (parameters: x3 = 5)" in text
     assert "A to B A -> B 35 computed" in text and "A to C A -> C 65 computed" in text
+
+
+def test_sample_values_are_consistent_feasible_and_labelled(client):
+    # a small town grid: two entry points, one-way loop in the middle
+    j = lambda k, t="intersection": {"key": k, "name": k, "node_type": t}
+    r = lambda k, a, b: {"key": k, "source": a, "target": b}
+    n = {"name": "Grid", "method": "map",
+         "junctions": [j("V1", "start"), j("V2"), j("V3"), j("V4", "boundary"), j("V5", "end")],
+         "roads": [r("E1", "V1", "V2"), r("E2", "V2", "V3"), r("E3", "V3", "V4"), r("E4", "V4", "V2"),
+                   r("E5", "V3", "V5"), r("E6", "V5", "V1"), r("E7", "V2", "V5")]}
+    first = client.post("/api/sample-values", json=n).json()
+    assert first == client.post("/api/sample-values", json=n).json()  # repeatable
+    assert "not real traffic counts" in first["summary"]["note"]
+    demand = {x["key"]: x["net_demand"] for x in first["junctions"]}
+    assert sum(float(v) for v in demand.values()) == 0
+    assert demand["V2"] == "0" and demand["V3"] == "0"  # only entry / exit points carry external traffic
+    flows = {x["key"]: x["known_flow"] for x in first["roads"]}
+    assert 0 < sum(v is not None for v in flows.values()) < len(flows)
+    for junction in n["junctions"]:
+        junction["net_demand"] = demand[junction["key"]]
+    for road in n["roads"]:
+        road["known_flow"] = flows[road["key"]]
+    out = client.post("/api/analyze", json={"network": n}).json()
+    assert out["result"]["analysis"]["consistent"] and out["result"]["feasibility"]["exists"]
+    assert client.post("/api/sample-values", json={"name": "x", "junctions": [j("V1")], "roads": []}).status_code == 422

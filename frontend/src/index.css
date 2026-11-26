@@ -38,3 +38,4 @@ h1, h2, h3 { overflow-wrap: anywhere; }
 .fm-pin span { transform: rotate(45deg); color: #fff; font-weight: 800; font-size: 13px; }
 .fm-adding, .fm-adding .leaflet-interactive { cursor: crosshair !important; }
 .fm-arrow { display: block; overflow: visible; }
+.fm-node.boundary { border: 2px dashed #fff; box-shadow: 0 0 0 2px #0e7490, 0 1px 5px rgba(0,0,0,.45); }

@@ -108,7 +108,7 @@ async function workflowB() {
   await page.getByTestId("known-toggle").check();
   await page.fill("#rf", "60");
   await idle();
-  check("measured flow shown on its road", (await labels.allInnerTexts()).some((t) => t.startsWith("60")));
+  check("measured flow shown on its road, with the road ID", (await labels.allInnerTexts()).some((t) => /^E1 · 60/.test(t)));
   await shot("manual-editor");
 
   // mathematics
@@ -204,12 +204,12 @@ async function workflowA() {
     await page.locator(`#${field}-list li button`).nth(Math.max(0, wanted)).click();
     return options.length;
   };
-  check("pickup autocomplete returns suggestions", (await choose("pickup", "Gujarat College")) > 0);
-  check("destination autocomplete returns suggestions", (await choose("destination", "Mithakhali Six Roads", true)) > 0);
-  check("selected places displayed and changeable", (await page.getByTestId("pickup-selected").count()) === 1 && (await page.getByRole("button", { name: "Change destination location" }).count()) === 1);
+  check("Location 1 autocomplete returns suggestions", (await choose("location1", "Gujarat College")) > 0);
+  check("Location 2 autocomplete returns suggestions", (await choose("location2", "Mithakhali Six Roads", true)) > 0);
+  check("selected places displayed and changeable", (await page.getByTestId("location1-selected").count()) === 1 && (await page.getByRole("button", { name: /Change location 2/ }).count()) === 1);
+  check("no pickup / drop wording", !/pickup|drop-?off|destination/i.test(await page.locator("main").innerText()));
   await page.getByText("Options").click();
-  await page.fill("#trip", "100");
-
+  
   let generated = false;
   for (let attempt = 1; attempt <= 3 && !generated; attempt++) {
     expected4xx = true;
@@ -233,14 +233,34 @@ async function workflowA() {
   const nJ = draft.junctions.length, nR = draft.roads.length;
   const names = [...new Set(draft.roads.map((r) => r.label).filter(Boolean))];
   check("junctions and roads extracted", nJ >= 3 && nR >= 3, `${nJ} junctions, ${nR} roads; streets: ${names.slice(0, 4).join(", ")}`);
+  check("junctions are V1, V2, ... and roads E1, E2, ...",
+    draft.junctions.every((j, i) => j.key === `V${i + 1}`) && draft.roads.every((r, i) => r.key === `E${i + 1}`));
+  check("network is connected without manual repair", (draft.map_meta.boundary ?? []).length > 0 &&
+    (() => { const seen = new Set([draft.junctions[0].key]); let grew = true; while (grew) { grew = false; for (const r of draft.roads) for (const [a, b] of [[r.source, r.target], [r.target, r.source]]) if (seen.has(a) && !seen.has(b)) { seen.add(b); grew = true; } } return seen.size === nJ; })(),
+    `${(draft.map_meta.boundary ?? []).length} boundary junctions`);
   check("every road references existing junctions", draft.roads.every((r) => draft.junctions.some((j) => j.key === r.source) && draft.junctions.some((j) => j.key === r.target)));
   const at = Object.fromEntries(draft.junctions.map((j) => [j.key, `${j.lat},${j.lng}`]));
   check("road geometry meets its junctions (not straight pickup-destination lines)",
     draft.roads.every((r) => r.geometry[0].join() === at[r.source] && r.geometry.at(-1).join() === at[r.target]) && draft.roads.some((r) => r.geometry.length > 2));
   const oneway = draft.roads.filter((r) => !draft.roads.some((o) => o.source === r.target && o.target === r.source)).length;
   check("one-way roads preserved", oneway > 0, `${oneway} roads without a reverse edge`);
+  const noteCount = (draft.map_meta.notes ?? []).length;
+  check("what the generator merged or left out is shown to the user",
+    noteCount === 0 || (await page.getByTestId("map-notes").locator("li").count()) === noteCount, `${noteCount} note(s)`);
   check("markers and direction arrows on the map", (await markers.count()) === nJ && (await page.locator(".fm-arrow").count()) === nR);
   await shot("map-network", page.getByTestId("graph-area"));
+
+  // clean mathematical graph view
+  await page.getByRole("button", { name: "Graph view" }).click();
+  await page.locator(".react-flow__node").first().waitFor(); await page.waitForTimeout(1200);
+  const boxes = await page.locator(".react-flow__node").evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => ({ x: r.x, y: r.y, w: r.width })));
+  const overlaps = boxes.flatMap((a, i) => boxes.slice(i + 1).filter((b) => Math.hypot(a.x - b.x, a.y - b.y) < a.w)).length;
+  const edgeLabels = await page.getByTestId("flow-label").allInnerTexts();
+  check("graph view shows every vertex and edge with its ID", boxes.length === nJ && edgeLabels.length === nR && edgeLabels.every((t) => /^E\d+ · /.test(t)));
+  check("graph view vertices do not overlap", overlaps === 0, `${overlaps} overlaps`);
+  await shot("graph-view", page.getByTestId("graph-area"));
+  await page.getByRole("button", { name: "Map view" }).click();
+  await markers.first().waitFor(); await page.waitForTimeout(1500);
 
   // Markers close together overlap at this zoom; use ones that are actually clickable (a user would zoom in).
   const visibleMarkers = () => page.evaluate(() => [...document.querySelectorAll("[data-testid=map-junction]")].flatMap((el, i) => {
@@ -268,6 +288,17 @@ async function workflowA() {
   await target.click();
   await page.fill("#jn", "Start"); await idle();
   check("junction renamed", (await page.locator("[data-testid=map-junction]", { hasText: "Star" }).count()) === 1);
+
+  // boundary traffic: clearly labelled sample values
+  const panel = page.getByTestId("boundary-panel");
+  check("boundary panel explains that map data has no vehicle counts", (await panel.innerText()).includes("no vehicle counts"));
+  await panel.getByRole("button", { name: "Use sample values" }).click(); await idle();
+  const filled = await page.evaluate(() => JSON.parse(localStorage.getItem("flowmatrix.draft")));
+  const sensors = filled.roads.filter((r) => r.known_flow !== null).length;
+  check("sample values are labelled and balanced", (await panel.innerText()).includes("SAMPLE VALUES") && (await panel.innerText()).includes("Balanced") && sensors > 0, `${sensors} measured roads`);
+  const outcome = await page.locator("h2", { hasText: "Solution classification" }).innerText();
+  check("sample data gives a solvable system", /Unique|Infinitely/.test(outcome) && (await page.getByText("Physically feasible").count()) >= 1, outcome.split("\n").pop());
+  await shot("boundary-panel", panel);
 
   // known flow: use a value from a computed solution so that the data stays consistent
   const table = await section("Final traffic network");
@@ -298,6 +329,7 @@ async function workflowA() {
   check("PDF report downloads for the map network", (await download()) > 3000);
   await page.reload(); await page.getByTestId("map-junction").first().waitFor(); await idle();
   const saved = await api(`/api/networks/${id}`);
+  check("sample label is saved with the network", saved.map_meta.sample_values === true && (await page.getByTestId("boundary-panel").innerText()).includes("SAMPLE VALUES"));
   check("map network saved and reloads with geometry", saved.method === "map" && saved.junctions.length === nJ && saved.roads.length === nR - 1 && saved.roads.every((r) => r.geometry?.length >= 2) && (await page.getByTestId("map-junction").count()) === nJ,
     `status ${saved.status.state}`);
   const after = await stats();

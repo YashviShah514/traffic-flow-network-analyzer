@@ -3,6 +3,7 @@ import { Download, Link2, MousePointer2, Pencil, PlusCircle, Save, Sigma, Trash2
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AnalysisSections, Legend } from "@/components/Analysis";
+import { BoundaryPanel } from "@/components/BoundaryPanel";
 import ManualCanvas, { type Mode, type Selection } from "@/components/ManualCanvas";
 import { NetworkMap } from "@/components/MapView";
 import { PropertiesPanel } from "@/components/PropertiesPanel";
@@ -38,6 +39,7 @@ export default function Workspace() {
   const [message, setMessage] = useState<{ tone: "ok" | "error" | "info"; text: string } | null>(null);
   const [busy, setBusy] = useState<"save" | "run" | "report" | "delete" | null>(null);
   const [ran, setRan] = useState(false);
+  const [view, setView] = useState<"map" | "graph">("map"); // map networks: real map or clean schematic graph
   const analysisRef = useRef<HTMLDivElement>(null);
   const initialised = useRef(false);
 
@@ -168,21 +170,40 @@ export default function Workspace() {
         {message && <div className="pointer-events-auto rounded-xl shadow-xl"><Alert tone={message.tone}>{message.text}</Alert></div>}
       </div>
       {ws.analysisError && <Alert tone="error">{ws.analysisError}</Alert>}
+      {net.map_meta?.notes?.length ? (
+        <Alert tone="info">
+          <details open={!net.id} data-testid="map-notes">
+            <summary className="cursor-pointer font-semibold">How this network was built from OpenStreetMap ({net.map_meta.notes.length} note{net.map_meta.notes.length > 1 ? "s" : ""})</summary>
+            <ul className="mt-1 list-disc pl-5">{net.map_meta.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+          </details>
+        </Alert>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
         <Card className="overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-2 dark:border-navy-700" role="toolbar" aria-label="Network editing">
             {editing ? <>
-              {tool("select", "Select", MousePointer2)}{tool("add", "Add junction", PlusCircle)}{tool("connect", "Connect roads", Link2)}
+              {tool("select", "Select", MousePointer2)}{!(net.method === "map" && view === "graph") && tool("add", "Add junction", PlusCircle)}{tool("connect", "Connect roads", Link2)}
               <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300"><input type="checkbox" checked={parallel} onChange={(e) => setParallel(e.target.checked)} />parallel roads</label>
               <span className="text-xs text-slate-500">{connectFrom ? "Now click the end junction." : HINT[mode]}{net.method === "map" && mode === "add" && " Clicking a road splits it."}</span>
             </> : <span className="text-xs text-slate-500">Read-only view. Press “Edit” to change the network.</span>}
           </div>
+          {net.method === "map" && (
+            <div className="flex items-center gap-1 border-b border-slate-200 px-2 py-1.5 dark:border-navy-700" role="group" aria-label="View">
+              {(["map", "graph"] as const).map((v) => (
+                <Button key={v} size="sm" variant={view === v ? "default" : "ghost"} aria-pressed={view === v}
+                  onClick={() => { setView(v); setConnectFrom(null); if (v === "graph" && mode === "add") setMode("select"); }}>{v === "map" ? "Map view" : "Graph view"}</Button>))}
+              <span className="ml-2 text-xs text-slate-500">{view === "graph" ? "Mathematical graph: vertices spaced apart, same edges and directions." : "Real roads on OpenStreetMap."}</span>
+            </div>
+          )}
           <div className="relative h-[62dvh] min-h-[380px] xl:h-[600px]" data-testid="graph-area">
-            {net.method === "map" ? (
+            {net.method === "map" && view === "map" ? (
               <NetworkMap net={net} editable={editing} mode={mode} selected={selected} connectFrom={connectFrom} flows={flows}
                 onSelect={setSelected} onJunctionClick={junctionClick}
-                onAddAt={({ lat, lng }) => { const out = addJunction(net, { x: 0, y: 0, lat, lng }); setNet(out.net); setSelected({ kind: "junction", key: out.key }); }}
+                onAddAt={({ lat, lng }) => {
+                  // graph-view position: beside the geographically nearest junction
+                  const near = [...net.junctions].sort((p, q) => Math.hypot((p.lat ?? 0) - lat, (p.lng ?? 0) - lng) - Math.hypot((q.lat ?? 0) - lat, (q.lng ?? 0) - lng))[0];
+                  const out = addJunction(net, { x: (near?.x ?? 0) + 90, y: (near?.y ?? 0) + 70, lat, lng }); setNet(out.net); setSelected({ kind: "junction", key: out.key }); }}
                 onSplit={(road, at) => { const out = splitRoadAt(net, road, at); if (out.error) setMessage({ tone: "error", text: out.error }); else { setNet(out.net); setSelected({ kind: "junction", key: out.key! }); } }} />
             ) : (
               <ManualCanvas net={net} editable={editing} mode={mode} selected={selected} connectFrom={connectFrom} flows={flows}
@@ -208,6 +229,8 @@ export default function Workspace() {
         <PropertiesPanel net={net} setNet={setNet} selected={selected} onSelect={setSelected} editable={editing} flows={flows}
           allowParallel={parallel} onError={(text) => setMessage({ tone: "error", text })} />
       </div>
+
+      {net.method === "map" && <BoundaryPanel net={net} setNet={setNet} editable={editing} />}
 
       <div ref={analysisRef} className="scroll-mt-4">
         <AnalysisSections net={net} ws={ws} a={analysis} solution={solution} auto={auto} flows={flows} />

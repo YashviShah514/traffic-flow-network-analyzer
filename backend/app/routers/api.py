@@ -8,6 +8,7 @@ from ..database import get_db
 from ..engine.equations import NetworkError
 from ..engine.pipeline import analyze
 from ..schemas import AnalyzeRequest, MapNetworkRequest, NetworkSchema, SolveRequest
+from ..engine.sample import sample_values
 from ..services import osm, osm_graph
 from ..services import repository as repo
 from ..services.report import build_pdf
@@ -108,6 +109,16 @@ def list_solutions(nid: int, db: Session = Depends(get_db)):
             for s in reversed(_get(db, nid).solutions)]
 
 
+@router.post("/sample-values")
+def sample(network: NetworkSchema):
+    """Clearly labelled demonstration traffic that satisfies conservation. NOT real counts."""
+    try:
+        repo.require_valid(network)
+        return sample_values(network)
+    except NetworkError as e:
+        raise HTTPException(422, str(e))
+
+
 @router.post("/report")
 def report(req: AnalyzeRequest):
     """PDF of the network exactly as shown on screen, with the chosen parameter values."""
@@ -146,5 +157,5 @@ def reverse(lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=18
 @router.post("/map/network")
 def map_network(req: MapNetworkRequest):
     """Real road network between two places. Returns an UNSAVED draft in the common graph model."""
-    return _map_call(osm.generate_network, req.pickup.model_dump(), req.destination.model_dump(), req.detail,
+    return _map_call(osm.generate_network, req.start.model_dump(), req.end.model_dump(), req.detail,
                      req.radius_m, req.prune_stubs, req.trip_flow)

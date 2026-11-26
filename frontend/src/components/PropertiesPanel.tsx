@@ -1,6 +1,6 @@
 import { ArrowLeftRight, Trash2, X } from "lucide-react";
 import { Badge, Button, Card, CardContent, Input, Label } from "@/components/ui/ui";
-import { FLOW_COLORS, FLOW_LABELS, oppositeRoads, removeJunction, removeRoad, reverseRoad, setEndpoints, setTwoWay, updateJunction, updateRoad, type RoadFlow } from "@/lib/graph";
+import { FLOW_COLORS, FLOW_LABELS, oppositeRoads, removeJunction, removeRoad, reverseRoad, roadIds, setEndpoints, setTwoWay, updateJunction, updateRoad, type RoadFlow } from "@/lib/graph";
 import type { NetworkDraft } from "@/lib/types";
 import { useMedia } from "@/lib/useMedia";
 import { cn } from "@/lib/utils";
@@ -33,7 +33,7 @@ export function PropertiesPanel({ net, setNet, selected, onSelect, editable, flo
         {!junction && !road && <p className="text-slate-500">Select a junction or road to see its details{editable ? " and edit it" : ""}.</p>}
 
         {junction && <>
-          <h3 className="font-semibold">Junction {junction.name}</h3>
+          <h3 className="font-semibold">Junction {junction.name} <span className="text-xs font-normal text-slate-500">ID {junction.key}</span></h3>
           <div className="flex flex-wrap gap-1.5">
             <Badge tone="neutral">{(junction.node_type ?? "junction").replace("_", " ")}</Badge>
             <Badge tone="blue">{connected.length} road(s)</Badge>
@@ -52,7 +52,7 @@ export function PropertiesPanel({ net, setNet, selected, onSelect, editable, flo
         </>}
 
         {road && <>
-          <h3 className="font-semibold">Road {name(road.source)} → {name(road.target)}</h3>
+          <h3 className="font-semibold">Road {roadIds(net)[road.key]}: {name(road.source)} → {name(road.target)}</h3>
           <div className="flex flex-wrap gap-1.5">
             <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white" style={{ background: FLOW_COLORS[flows[road.key]?.kind ?? "unresolved"] }}>{FLOW_LABELS[flows[road.key]?.kind ?? "unresolved"]}</span>
             <Badge tone="blue">{flows[road.key]?.text}</Badge>

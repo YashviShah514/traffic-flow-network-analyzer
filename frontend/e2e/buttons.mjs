@@ -82,15 +82,15 @@ try {
   const map = await page.locator(".leaflet-container").boundingBox();
   await page.getByRole("button", { name: "or pick on the map" }).first().click();
   await page.mouse.click(map.x + map.width * 0.35, map.y + map.height * 0.5);
-  await page.getByTestId("pickup-selected").waitFor({ timeout: 20000 }); await wait(2500);
-  check("pick pickup by clicking the map", true, (await page.getByTestId("pickup-selected").innerText()).split("\n")[0]);
+  await page.getByTestId("location1-selected").waitFor({ timeout: 20000 }); await wait(2500);
+  check("pick Location 1 by clicking the map", true, (await page.getByTestId("location1-selected").innerText()).split("\n")[0]);
   const pin = page.locator(".fm-pin").first();
   const p = await pin.boundingBox();
-  const textBefore = await page.getByTestId("pickup-selected").innerText();
+  const textBefore = await page.getByTestId("location1-selected").innerText();
   await page.mouse.move(p.x + p.width / 2, p.y + p.height / 2); await page.mouse.down(); await page.mouse.move(p.x + 160, p.y - 90, { steps: 12 }); await page.mouse.up(); await wait(3500);
-  check("dragging the marker changes the location", (await page.getByTestId("pickup-selected").innerText()) !== textBefore);
-  await page.getByRole("button", { name: "Change pickup location" }).click();
-  check("Change clears the selection", (await page.getByTestId("pickup-selected").count()) === 0 && (await page.getByRole("button", { name: "Generate road network" }).isDisabled()));
+  check("dragging the marker changes the location", (await page.getByTestId("location1-selected").innerText()) !== textBefore);
+  await page.getByRole("button", { name: /Change location 1/ }).click();
+  check("Change clears the selection", (await page.getByTestId("location1-selected").count()) === 0 && (await page.getByRole("button", { name: "Generate road network" }).isDisabled()));
 
   // editable start / end junction, duplicate-safe reverse
   const post = (b) => api("/api/networks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
@@ -140,7 +140,7 @@ try {
   await page.getByTestId("properties").locator("button", { hasText: "→" }).first().click(); await wait(300);
   const wasOsm = (await page.getByTestId("properties").innerText()).includes("OpenStreetMap");
   const end = await page.getByLabel("Ending junction").inputValue(), start = await page.getByLabel("Starting junction").inputValue();
-  const free = ["J1", "J2", "J3", "J4"].filter((k) => k !== end && k !== start);
+  const free = (await page.getByLabel("Ending junction").locator("option").evaluateAll((os) => os.map((o) => o.value))).filter((k) => k !== end && k !== start);
   let moved = "";
   for (const other of free) {  // the first choice may duplicate an existing road, which is refused by design
     await page.getByLabel("Ending junction").selectOption(other); await wait();
@@ -184,7 +184,7 @@ try {
   let calls = 0, hold = false;
   await page.route("**/api/map/network", async (r) => { calls++; if (!hold) await r.fulfill({ status: 502, json: { detail: "Road data could not be downloaded. Retry in a minute." } }); });
   await page.goto(`${U}/create/map`); await page.evaluate(() => localStorage.removeItem("flowmatrix.draft"));
-  for (const [field, text] of [["pickup", "Alpha"], ["destination", "Beta"]]) { await page.fill(`#${field}`, text); await page.locator(`#${field}-list li button`).first().click(); }
+  for (const [field, text] of [["location1", "Alpha"], ["location2", "Beta"]]) { await page.fill(`#${field}`, text); await page.locator(`#${field}-list li button`).first().click(); }
   expected = true;
   await page.getByRole("button", { name: "Generate road network" }).click(); await wait();
   check("service failure is explained", (await page.getByText(/could not be downloaded/).count()) === 1);

@@ -3,7 +3,7 @@ import {
   useNodesState, useReactFlow, type Connection, type EdgeProps, type Node, type NodeProps,
 } from "@xyflow/react";
 import { useEffect, useMemo, useRef } from "react";
-import { demandText, FLOW_COLORS, type RoadFlow } from "@/lib/graph";
+import { demandText, FLOW_COLORS, roadIds, type RoadFlow } from "@/lib/graph";
 import type { NetworkDraft } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,7 @@ function JunctionNode({ data }: NodeProps) {
   const d = data as { name: string; demand: string; selected: boolean; source: boolean; editable: boolean; type: string };
   return (
     <div data-testid="junction-node" className={cn("relative grid h-14 w-14 place-items-center rounded-full text-xs font-bold text-white shadow-lg ring-offset-2",
-      d.type === "pickup" ? "bg-green-700" : d.type === "destination" ? "bg-red-700" : "bg-navy-900",
+      d.type === "start" || d.type === "pickup" ? "bg-green-700" : d.type === "end" || d.type === "destination" ? "bg-red-700" : d.type === "boundary" ? "bg-cyan-700 border-2 border-dashed border-white" : "bg-navy-900",
       d.selected && "ring-4 ring-cyan2-400", d.source && "ring-4 ring-amber-400")}>
       <Handle type="target" position={Position.Top} isConnectableStart={false} style={{ inset: 0, width: "100%", height: "100%", transform: "none", opacity: 0, borderRadius: "50%" }} />
       <Handle type="source" position={Position.Right} title="Drag to another junction to create a road" className="tfna-src"
@@ -89,6 +89,7 @@ function Canvas(p: CanvasProps) {
   }, [nodes, rf]);
 
   const edges = useMemo(() => {
+    const ids = roadIds(net);
     const seen: Record<string, number> = {};
     return net.roads.map((r) => {
       const pair = `${r.source}>${r.target}`;
@@ -97,10 +98,10 @@ function Canvas(p: CanvasProps) {
       const twin = net.roads.some((o) => o.source === r.target && o.target === r.source);
       const flow = flows[r.key];
       return { id: r.key, source: r.source, target: r.target, type: "road",
-        data: { offset: (twin ? 14 : 0) + index * 28, text: flow?.text ?? "", color: FLOW_COLORS[flow?.kind ?? "unresolved"],
+        data: { offset: (twin ? 14 : 0) + index * 28, text: `${ids[r.key]} · ${flow?.text ?? ""}`, color: FLOW_COLORS[flow?.kind ?? "unresolved"],
           name: net.roads.length <= 16 ? r.label : "", selected: selected?.kind === "road" && selected.key === r.key } };
     });
-  }, [net.roads, selected, flows]);
+  }, [net, selected, flows]);
 
   return (
     <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange}

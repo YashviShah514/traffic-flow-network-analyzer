@@ -55,7 +55,7 @@ def test_intersections_become_junctions_and_pass_through_points_do_not():
     keys = by_coord(g)
     assert len(g["junctions"]) == 4  # 1 (pickup), 2, 3, 4 (destination); 5, 6 and 8 are plain bends
     assert (round(coord(8)[0], 7), round(coord(8)[1], 7)) not in keys
-    assert g["stats"]["pickup_junction"] == key(g, 1) and g["stats"]["destination_junction"] == key(g, 4)
+    assert g["stats"]["start_junction"] == key(g, 1) and g["stats"]["end_junction"] == key(g, 4)
 
 
 def test_one_way_restriction_is_preserved_along_a_chain():
@@ -103,10 +103,10 @@ def test_geometry_starts_and_ends_on_its_junctions_and_follows_the_road():
     assert len(lane["geometry"]) == 4  # 2 -> 5 -> 6 -> 3, not a straight line
 
 
-def test_trip_demand_sits_on_pickup_and_destination():
+def test_trip_demand_sits_on_the_two_locations():
     g = build(trip_flow=100)
     demand = {j["node_type"]: j["net_demand"] for j in g["junctions"]}
-    assert demand["pickup"] == "-100" and demand["destination"] == "100"
+    assert demand["start"] == "-100" and demand["end"] == "100"
 
 
 def test_private_and_unselected_roads_are_ignored():
@@ -192,3 +192,105 @@ def test_fragments_not_connected_to_pickup_or_destination_are_left_out_and_repor
     assert all(r["label"] != "Loose Loop" for r in g["roads"])
     assert g["stats"]["components"] == 1 and g["stats"]["left_out_pieces"] > 0
     assert any("left out" in w for w in g["warnings"])
+
+
+def test_vertices_and_edges_are_numbered_V_and_E():
+    g = build()
+    assert [j["key"] for j in g["junctions"]] == [f"V{i}" for i in range(1, len(g["junctions"]) + 1)]
+    assert [r["key"] for r in g["roads"]] == [f"E{i}" for i in range(1, len(g["roads"]) + 1)]
+    assert [j["name"] for j in g["junctions"]] == [j["key"] for j in g["junctions"]]
+
+
+def test_where_a_road_leaves_the_area_is_a_boundary_junction():
+    # a long road from point 3 northwards: its far end is 900 m away, outside the corridor
+    far = [{"type": "node", "id": 30, "lat": BASE_LAT + 0.002, "lon": BASE_LNG + 0.002},
+           {"type": "node", "id": 31, "lat": BASE_LAT + 0.008, "lon": BASE_LNG + 0.002}]
+    road = {"type": "way", "id": 400, "nodes": [3, 30, 31], "tags": {"highway": "tertiary", "name": "Out of town"}}
+    g = build(grid() + far + [road])
+    boundary = [j for j in g["junctions"] if j["node_type"] == "boundary"]
+    assert [j["key"] for j in boundary] == g["boundary"] == [key(g, 3)]
+    assert g["stats"]["boundary_junctions"] == 1
+    # a genuine cul-de-sac (point 7) is not a boundary
+    assert not [j for j in build()["junctions"] if j["node_type"] == "boundary"]
+
+
+def pass_through_vertices(g):
+    protected = set(g["boundary"]) | {g["stats"]["start_junction"], g["stats"]["end_junction"]}
+    found = []
+    for j in g["junctions"]:
+        k = j["key"]
+        into = [r["source"] for r in g["roads"] if r["target"] == k]
+        out = [r["target"] for r in g["roads"] if r["source"] == k]
+        neighbours = set(into) | set(out)
+        one_way = len(into) == 1 and len(out) == 1 and into != out
+        two_way = len(into) == 2 and len(out) == 2 and len(neighbours) == 2 and set(into) == set(out)
+        if k not in protected and (one_way or two_way or not into or not out or len(neighbours) == 1):
+            found.append(k)
+    return found
+
+
+def test_no_vertex_is_left_that_does_not_join_anything():
+    data = json.loads((Path(__file__).parent / "fixtures" / "navrangpura.json").read_text(encoding="utf-8"))
+    nodes = {e["id"]: (e["lat"], e["lon"]) for e in data["elements"] if e["type"] == "node"}
+    way = max((e for e in data["elements"] if e["type"] == "way"), key=lambda w: len(w["nodes"]))
+    route = [nodes[way["nodes"][0]], nodes[way["nodes"][-1]]]
+    for g in (build(), build_graph(data["elements"], route, route[0], route[1], "all", 400)):
+        assert pass_through_vertices(g) == []
+        assert all(r["source"] != r["target"] for r in g["roads"])
+
+
+def test_duplicate_edges_drawn_on_top_of_each_other_are_removed():
+    twin_nodes = [{"type": "node", "id": 40, "lat": coord(8)[0] + 0.00005, "lon": coord(8)[1]}]  # 5 m beside Main Street
+    twin = {"type": "way", "id": 500, "nodes": [2, 40, 3], "tags": {"highway": "tertiary", "name": "Main Street"}}
+    g = build(grid() + twin_nodes + [twin])
+    pairs = [(r["source"], r["target"]) for r in g["roads"] if r["label"] == "Main Street"]
+    assert len(pairs) == len(set(pairs))
+    assert g["stats"]["duplicates_removed"] == 2
+
+
+def test_generation_widens_the_selection_until_the_places_connect(monkeypatch):
+    asked = []
+
+    def roads(points, detail, radius):
+        asked.append(detail)
+        if detail == "main":  # only the two ends of Main Street: nothing joins them
+            return [e for e in grid() if e["type"] == "node"] + [
+                {"type": "way", "id": 1, "nodes": [1, 2], "tags": {"highway": "tertiary"}},
+                {"type": "way", "id": 2, "nodes": [3, 4], "tags": {"highway": "tertiary"}}]
+        return grid()
+
+    monkeypatch.setattr(osm, "fetch_route", lambda a, b: {"points": [list(coord(1)), list(coord(4))], "distance_m": 330})
+    monkeypatch.setattr(osm, "fetch_roads", roads)
+    place = lambda n: {"lat": coord(n)[0], "lng": coord(n)[1], "label": str(n)}
+    out = osm.generate_network(place(1), place(4), radius_m=300)
+    assert asked == ["main", "all"]
+    assert out["stats"]["end_reachable"] and out["stats"]["components"] == 1
+    assert out["network"]["map_meta"]["detail"] == "all"
+    assert any("local streets were included" in w for w in out["warnings"])
+
+
+def test_a_location_on_a_trimmed_side_road_gives_an_error_not_a_crash():
+    # Location 2 sits at the end of a cul-de-sac that is cut off from everything else
+    ids = {50: (-0.003, 0.0030), 51: (-0.003, 0.0040)}
+    nodes = [{"type": "node", "id": n, "lat": BASE_LAT + a, "lon": BASE_LNG + b} for n, (a, b) in ids.items()]
+    lonely = {"type": "way", "id": 600, "nodes": [50, 51], "tags": {"highway": "tertiary"}}
+    far = (BASE_LAT - 0.003, BASE_LNG + 0.004)
+    try:
+        g = build_graph(grid() + nodes + [lonely], [coord(1), far], coord(1), far, radius_m=300)
+    except MapError:
+        return
+    assert g["stats"]["end_junction"] in {j["key"] for j in g["junctions"]}
+
+
+def test_locations_snap_to_the_carriageway_the_route_uses():
+    """A divided road: two one-way carriageways 11 m apart. The clicked point is nearer the wrong one."""
+    nodes = {61: (0.0000, 0.000), 62: (0.0000, 0.003), 63: (0.0000, 0.006),   # eastbound
+             71: (0.0001, 0.000), 72: (0.0001, 0.003), 73: (0.0001, 0.006)}   # westbound
+    elements = [{"type": "node", "id": n, "lat": BASE_LAT + a, "lon": BASE_LNG + b} for n, (a, b) in nodes.items()]
+    road = lambda i, ids: {"type": "way", "id": i, "nodes": ids, "tags": {"highway": "primary", "oneway": "yes"}}
+    cross = {"type": "way", "id": 3, "nodes": [62, 72], "tags": {"highway": "primary"}}
+    elements += [road(1, [61, 62, 63]), road(2, [73, 72, 71]), cross]
+    at = lambda lat, lng: (BASE_LAT + lat, BASE_LNG + lng)
+    route = [at(0, 0), at(0, 0.003), at(0, 0.006)]  # drives east
+    g = build_graph(elements, route, at(0.00007, 0.000), at(0.00007, 0.006), radius_m=100, prune_stubs=False)
+    assert g["stats"]["end_reachable"]

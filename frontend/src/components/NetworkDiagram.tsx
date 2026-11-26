@@ -60,7 +60,8 @@ export function NetworkDiagram({ net, styles, height = 280, showDemand = true }:
       {net.junctions.map((j) => {
         const p = at(raw[j.key]);
         const d = Number(j.net_demand);
-        const fill = j.node_type === "pickup" ? "#15803d" : j.node_type === "destination" ? "#b91c1c" : "#0b1f3a";
+        const fill = j.node_type === "start" || j.node_type === "pickup" ? "#15803d" : j.node_type === "end" || j.node_type === "destination" ? "#b91c1c"
+          : j.node_type === "boundary" ? "#0e7490" : "#0b1f3a";
         return (
           <g key={j.key}>
             <circle cx={p.x} cy={p.y} r={R} fill={fill} />

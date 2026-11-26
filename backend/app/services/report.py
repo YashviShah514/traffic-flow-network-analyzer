@@ -137,8 +137,12 @@ def build_pdf(schema, result, validation) -> bytes:
           T(f"Creation method: {method}"), T(schema.description or "")]
     meta = schema.map_meta or {}
     if schema.method == "map" and meta:
-        el.append(T(f"Pickup: {meta.get('pickup', {}).get('label', '')}   Destination: "
-                    f"{meta.get('destination', {}).get('label', '')}. Road data (c) OpenStreetMap contributors."))
+        first = meta.get("start") or meta.get("pickup") or {}
+        second = meta.get("end") or meta.get("destination") or {}
+        el.append(T(f"Location 1: {first.get('label', '')}   Location 2: {second.get('label', '')}. "
+                    "Road data (c) OpenStreetMap contributors."))
+    if meta.get("sample_values"):
+        el.append(T("NOTE: the traffic values in this network are SAMPLE values for demonstration, not real counts."))
     el += [Spacer(1, 6), P("1. Network diagram", h2), _diagram(schema, result)]
 
     el += [P("2. Validation", h2)]
@@ -148,11 +152,11 @@ def build_pdf(schema, result, validation) -> bytes:
 
     el += [P("3. Junctions", h2), table([[j.name, j.node_type, j.net_demand] for j in schema.junctions],
                                         ["Junction", "Type", "Net external demand D"])]
-    el += [P("4. Roads", h2), table([[r.label or "Unnamed road", f"{jn[r.source]} → {jn[r.target]}",
+    el += [P("4. Roads", h2), table([[r.key, r.label or "Unnamed road", f"{jn[r.source]} → {jn[r.target]}",
                                       var.get(r.key, "-"), r.known_flow if r.known_flow is not None else "unknown",
                                       f"{r.length_m:.0f} m" if r.length_m else "-"] for r in schema.roads],
-                                    ["Road", "Direction", "Variable", "Measured flow", "Length"],
-                                    widths=[62 * mm, 30 * mm, 20 * mm, 30 * mm, 20 * mm])]
+                                    ["ID", "Road", "Direction", "Variable", "Measured flow", "Length"],
+                                    widths=[12 * mm, 52 * mm, 30 * mm, 18 * mm, 28 * mm, 18 * mm])]
     el += [P("5. Traffic conservation equations", h2),
            T("Convention: incoming flow - outgoing flow = D (D = net vehicles leaving the network at the junction).")]
     el += [T(f"{e['junction_name']}:  {e['text']}", mono) for e in result["equations"]]

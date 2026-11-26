@@ -13,3 +13,8 @@ __pycache__/
 .osm_cache/
 
 backups/
+
+/video/
+presentation/FlowMatrix_Team_Guide*
+*.zip
+.zip

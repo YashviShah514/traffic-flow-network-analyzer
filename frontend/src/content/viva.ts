@@ -44,7 +44,10 @@ export const VIVA: Category[] = [
   ] },
   { name: "Maps and OpenStreetMap", items: [
     { level: "Beginner", q: "Where do the roads in automatic mode come from?", a: "OpenStreetMap, downloaded through the Overpass API for a corridor around the driving route." },
-    { level: "Intermediate", q: "When does a map point become a junction?", a: "At intersections, dead ends, changes of one-way rule and at pickup/destination; other points only shape the road." },
+    { level: "Intermediate", q: "When does a map point become a junction?", a: "At intersections, boundary points, changes of one-way rule and at the two selected locations; other points only shape the road." },
+    { level: "Beginner", q: "What is a boundary junction?", a: "A place where a road leaves the selected area, so vehicles can enter or leave the network there." },
+    { level: "Intermediate", q: "Is the graph conversion done by AI?", a: "No. It is a deterministic algorithm: it only removes or joins what OpenStreetMap contains, so it cannot invent a road." },
+    { level: "Advanced", q: "Where do sample traffic values come from?", a: "Imaginary vehicles are routed along real directed paths between boundary points, so conservation holds exactly. They are labelled as samples, not real counts." },
     { level: "Intermediate", q: "Why not use Nominatim for autocomplete?", a: "The public Nominatim usage policy forbids autocomplete; Photon is designed for search-as-you-type." },
     { level: "Advanced", q: "What can make a generated network infeasible?", a: "Demands at the edge of the extract are unknown to the map; with one-way roads a measured flow may be impossible unless matching demands are entered." },
   ] },

@@ -2,7 +2,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
-import { demandText, FLOW_COLORS, type RoadFlow } from "@/lib/graph";
+import { demandText, FLOW_COLORS, roadIds, type RoadFlow } from "@/lib/graph";
 import type { LatLng, NetworkDraft, Place, Road } from "@/lib/types";
 import type { Mode, Selection } from "./ManualCanvas";
 
@@ -68,6 +68,8 @@ function along(map: L.Map, line: LatLng[], fraction: number): { at: LatLng; angl
   return { at: [ll.lat, ll.lng], angle: (Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x) * 180) / Math.PI };
 }
 
+export const NODE_COLOR: Record<string, string> = { start: "#15803d", pickup: "#15803d", end: "#b91c1c", destination: "#b91c1c", boundary: "#0e7490" };
+
 interface MapEditorProps {
   net: NetworkDraft; editable: boolean; mode: Mode; selected: Selection; connectFrom: string | null;
   flows: Record<string, RoadFlow>;
@@ -81,6 +83,7 @@ function Roads({ net, editable, mode, selected, flows, onSelect, onSplit }: MapE
   useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
   const position = useMemo(() => new Map(net.junctions.map((j) => [j.key, [j.lat, j.lng] as LatLng])), [net.junctions]);
   const dense = net.roads.length > 40;
+  const ids = useMemo(() => roadIds(net), [net]);
 
   const drawn = useMemo(() => {
     const seen: Record<string, number> = {};
@@ -106,7 +109,7 @@ function Roads({ net, editable, mode, selected, flows, onSelect, onSplit }: MapE
     const rank = (k: string) => (selected?.key === k ? 0 : flows[k]?.kind === "known" ? 1 : 2);
     const out = new Map<string, LatLng>();
     for (const { road, line } of [...drawn].sort((a, b) => rank(a.road.key) - rank(b.road.key))) {
-      const w = (flows[road.key]?.text.length ?? 2) * 7 + 10;
+      const w = (`${ids[road.key]} · ${flows[road.key]?.text ?? ""}`.length) * 7 + 10;
       for (const fraction of [0.45, 0.25, 0.8]) {
         const { at } = along(map, line, fraction);
         const p = map.project(at, zoom);
@@ -115,7 +118,7 @@ function Roads({ net, editable, mode, selected, flows, onSelect, onSplit }: MapE
       }
     }
     return out;
-  }, [drawn, flows, selected, net.junctions, map, zoom]);
+  }, [drawn, flows, ids, selected, net.junctions, map, zoom]);
 
   return (
     <>
@@ -130,7 +133,7 @@ function Roads({ net, editable, mode, selected, flows, onSelect, onSplit }: MapE
           if (editable && mode === "add") onSplit(road.key, [e.latlng.lat, e.latlng.lng]);
           else onSelect({ kind: "road", key: road.key });
         };
-        const title = `${road.label || "Unnamed road"} · ${flow?.text ?? ""}`;
+        const title = `${ids[road.key]} · ${road.label || "Unnamed road"} · ${flow?.text ?? ""}`;
         return (
           <span key={road.key}>
             <Polyline positions={line} pathOptions={{ color, weight: active ? 7 : 4, opacity: 0.9, interactive: false }} />
@@ -143,7 +146,7 @@ function Roads({ net, editable, mode, selected, flows, onSelect, onSplit }: MapE
             {labelAt && (
               <Marker position={labelAt} interactive={false} keyboard={false}
                 icon={L.divIcon({ className: "fm-icon", iconSize: [0, 0],
-                  html: `<div class="fm-flow" style="color:${color};border-color:${color}">${esc(flow?.text ?? "")}</div>` })} />
+                  html: `<div class="fm-flow" style="color:${color};border-color:${color}">${esc(`${ids[road.key]} · ${flow?.text ?? ""}`)}</div>` })} />
             )}
           </span>
         );
@@ -163,39 +166,40 @@ export function NetworkMap(props: MapEditorProps) {
   const points = net.junctions.filter((j) => j.lat != null).map((j) => [j.lat!, j.lng!] as LatLng);
   const first = useRef<LatLng>(points[0] ?? [23.03, 72.56]);
   const small = net.junctions.length > 25;
+  const location1 = net.map_meta?.start ?? net.map_meta?.pickup, location2 = net.map_meta?.end ?? net.map_meta?.destination;
   return (
     <MapContainer center={first.current} zoom={15} zoomSnap={0.25} zoomDelta={0.5} className={`h-full w-full ${editable && mode === "add" ? "fm-adding" : ""}`} doubleClickZoom={false}>
-      <Tiles /><Resize /><Fit points={points} signature={`${net.id ?? "draft"}:${net.map_meta?.pickup?.lat ?? ""}`} />
+      <Tiles /><Resize /><Fit points={points} signature={`${net.id ?? "draft"}:${net.map_meta?.start?.lat ?? net.map_meta?.pickup?.lat ?? ""}`} />
       <ClickToAdd {...props} />
       <Roads {...props} />
       {net.junctions.filter((j) => j.lat != null).map((j) => {
         const active = (selected?.kind === "junction" && selected.key === j.key) || connectFrom === j.key;
         const demand = demandText(j.net_demand);
-        const color = j.node_type === "pickup" ? "#15803d" : j.node_type === "destination" ? "#b91c1c" : "#0b1f3a";
+        const color = NODE_COLOR[j.node_type ?? ""] ?? "#0b1f3a";
         const size = small ? 18 : 24;
         return (
           <Marker key={j.key} position={[j.lat!, j.lng!]} title={j.name} zIndexOffset={500} riseOnHover bubblingMouseEvents={false}
             eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); onJunctionClick(j.key); } }}
             icon={L.divIcon({ className: "fm-icon", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
-              html: `<div data-testid="map-junction" class="fm-node ${active ? "active" : ""}" style="background:${color};width:${size}px;height:${size}px">${esc(j.name.slice(0, 4))}</div>${demand ? `<div class="fm-demand">${esc(demand)}</div>` : ""}` })} />
+              html: `<div data-testid="map-junction" class="fm-node ${active ? "active" : ""} ${j.node_type === "boundary" ? "boundary" : ""}" style="background:${color};width:${size}px;height:${size}px">${esc(j.name.slice(0, 4))}</div>${demand ? `<div class="fm-demand">${esc(demand)}</div>` : ""}` })} />
         );
       })}
-      {net.map_meta?.pickup && <Marker position={[net.map_meta.pickup.lat, net.map_meta.pickup.lng]} icon={pinIcon("P", "#15803d")}><Tooltip>Pickup: {net.map_meta.pickup.label}</Tooltip></Marker>}
-      {net.map_meta?.destination && <Marker position={[net.map_meta.destination.lat, net.map_meta.destination.lng]} icon={pinIcon("D", "#b91c1c")}><Tooltip>Destination: {net.map_meta.destination.label}</Tooltip></Marker>}
+      {location1 && <Marker position={[location1.lat, location1.lng]} icon={pinIcon("1", "#15803d")}><Tooltip>Location 1: {location1.label}</Tooltip></Marker>}
+      {location2 && <Marker position={[location2.lat, location2.lng]} icon={pinIcon("2", "#b91c1c")}><Tooltip>Location 2: {location2.label}</Tooltip></Marker>}
     </MapContainer>
   );
 }
 
 /** Location-selection map used before generating: markers can be dragged, or placed by clicking. */
-export function PickerMap({ pickup, destination, picking, onPick }: {
-  pickup: Place | null; destination: Place | null; picking: "pickup" | "destination" | null;
-  onPick: (which: "pickup" | "destination", lat: number, lng: number) => void;
+export function PickerMap({ first, second, picking, onPick }: {
+  first: Place | null; second: Place | null; picking: "location1" | "location2" | null;
+  onPick: (which: "location1" | "location2", lat: number, lng: number) => void;
 }) {
-  const points: LatLng[] = [pickup, destination].filter(Boolean).map((p) => [p!.lat, p!.lng]);
-  const marker = (which: "pickup" | "destination", place: Place, letter: string, color: string) => (
+  const points: LatLng[] = [first, second].filter(Boolean).map((p) => [p!.lat, p!.lng]);
+  const marker = (which: "location1" | "location2", place: Place, letter: string, color: string) => (
     <Marker position={[place.lat, place.lng]} draggable icon={pinIcon(letter, color)}
       eventHandlers={{ dragend: (e) => { const p = (e.target as L.Marker).getLatLng(); onPick(which, p.lat, p.lng); } }}>
-      <Tooltip>{which === "pickup" ? "Pickup" : "Destination"}: {place.label}</Tooltip>
+      <Tooltip>{which === "location1" ? "Location 1" : "Location 2"}: {place.label}</Tooltip>
     </Marker>
   );
   function Click() {
@@ -207,9 +211,9 @@ export function PickerMap({ pickup, destination, picking, onPick }: {
       <Tiles /><Resize /><Click />
       <Fit points={points} signature={points.map((p) => p.join()).join("|")} />
       {points.length === 2 && <Polyline positions={points} pathOptions={{ color: "#64748b", dashArray: "6 8", weight: 2 }} />}
-      {pickup && marker("pickup", pickup, "P", "#15803d")}
-      {destination && marker("destination", destination, "D", "#b91c1c")}
-      {pickup && <CircleMarker center={[pickup.lat, pickup.lng]} radius={4} pathOptions={{ color: "#15803d" }} />}
+      {first && marker("location1", first, "1", "#15803d")}
+      {second && marker("location2", second, "2", "#b91c1c")}
+      {first && <CircleMarker center={[first.lat, first.lng]} radius={4} pathOptions={{ color: "#15803d" }} />}
     </MapContainer>
   );
 }

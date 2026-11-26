@@ -199,13 +199,16 @@ def fetch_roads(route_points: list, detail: str, radius_m: float) -> list[dict]:
                        "or create the network manually.")
 
 
-def generate_network(pickup: dict, destination: dict, detail: str = "main", radius_m: float = 150,
+def generate_network(start: dict, end: dict, detail: str = "main", radius_m: float = 150,
                      prune_stubs: bool = True, trip_flow: float = 0) -> dict:
-    """pickup/destination: {lat, lng, label}. Returns a network draft plus statistics."""
-    a, b = (pickup["lat"], pickup["lng"]), (destination["lat"], destination["lng"])
+    """start / end: {lat, lng, label}. Returns a network draft plus statistics.
+
+    If the first selection does not give one connected network in which Location 2 can be reached, the
+    corridor is widened and, for 'main', local streets are added - so the user does not have to repair it."""
+    a, b = (start["lat"], start["lng"]), (end["lat"], end["lng"])
     straight = haversine(a, b)
     if straight < 80:
-        raise MapError("Pickup and destination are less than 80 m apart. Choose places further apart.")
+        raise MapError("The two locations are less than 80 m apart. Choose places further apart.")
     if straight > MAX_DISTANCE_M:
         raise MapError(f"The places are {straight / 1000:.1f} km apart; the limit is {MAX_DISTANCE_M / 1000:g} km so that "
                        "the equation system stays readable. Choose closer places.")
@@ -214,32 +217,47 @@ def generate_network(pickup: dict, destination: dict, detail: str = "main", radi
         raise MapError("No driving route was found between these places (or the routing service is unavailable). "
                        "Retry, pick places on a road, or create the network manually.")
     points = route["points"]
-    notes = []
-    elements = fetch_roads(points, detail, radius_m)
-    try:
-        graph = build_graph(elements, points, a, b, detail, radius_m, prune_stubs, trip_flow)
-        needs_all = detail == "main" and not graph["stats"]["destination_reachable"]
-    except MapError:
-        if detail != "main":
-            raise
-        needs_all, graph = True, None
-    if needs_all:
+    wide = max(radius_m, 250)
+    best, errors = None, []  # best = (score, graph, detail, radius)
+    for wanted in ([detail] if detail == "all" else ["main", "all"]):
         try:
-            wider = build_graph(fetch_roads(points, "all", radius_m), points, a, b, "all", radius_m, prune_stubs, trip_flow)
-            graph, detail = wider, "all"
-            notes.append("Main roads alone did not connect the places, so local streets were included.")
-        except (MapError, ServiceError):
-            if graph is None:
-                raise
-    name = f"{pickup.get('label') or 'Pickup'} → {destination.get('label') or 'Destination'}"[:160]
+            elements = fetch_roads(points, wanted, wide)  # one download covers both corridor widths
+        except ServiceError:
+            if best:
+                break
+            raise
+        for radius in dict.fromkeys((radius_m, wide)):
+            try:
+                graph = build_graph(elements, points, a, b, wanted, radius, prune_stubs, trip_flow)
+            except MapError as e:
+                errors.append(e)
+                continue
+            score = (graph["stats"]["end_reachable"], graph["stats"]["components"] == 1)
+            if best is None or score > best[0]:
+                best = (score, graph, wanted, radius)
+            if score == (True, True):
+                break
+        if best and best[0] == (True, True):
+            break
+    if best is None:
+        raise errors[0]
+    _, graph, used_detail, used_radius = best
+    notes = []
+    if used_detail != detail:
+        notes.append("Main roads alone did not give a connected route, so local streets were included.")
+    if used_radius != radius_m:
+        notes.append(f"The corridor was widened from {radius_m:g} m to {used_radius:g} m to connect the network.")
+    name = f"{start.get('label') or 'Location 1'} → {end.get('label') or 'Location 2'}"[:160]
+    notes += graph["warnings"]
     return {
         "network": {
             "name": name, "description": "Generated from OpenStreetMap road data.", "method": "map",
             "junctions": graph["junctions"], "roads": graph["roads"],
-            "map_meta": {"pickup": pickup, "destination": destination, "route": points,
-                         "route_distance_m": round(route["distance_m"], 1), "detail": detail, "radius_m": radius_m,
-                         "trip_flow": trip_flow, "attribution": "© OpenStreetMap contributors"},
+            "map_meta": {"start": start, "end": end, "route": points,
+                         "route_distance_m": round(route["distance_m"], 1), "detail": used_detail,
+                         "radius_m": used_radius, "trip_flow": trip_flow, "boundary": graph["boundary"],
+                         "attribution": "© OpenStreetMap contributors"},
         },
         "stats": graph["stats"],
-        "warnings": notes + graph["warnings"],
+        "warnings": notes,
     }

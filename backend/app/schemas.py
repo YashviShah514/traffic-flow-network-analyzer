@@ -80,8 +80,8 @@ class Place(BaseModel):
 
 
 class MapNetworkRequest(BaseModel):
-    pickup: Place
-    destination: Place
+    start: Place   # Location 1
+    end: Place     # Location 2
     detail: Literal["main", "all"] = "main"
     radius_m: float = Field(default=150, ge=50, le=400)
     prune_stubs: bool = True

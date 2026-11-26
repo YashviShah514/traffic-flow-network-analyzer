@@ -15,8 +15,14 @@ export interface Road {
 }
 export interface Place { lat: number; lng: number; label: string; detail?: string }
 export interface MapMeta {
-  pickup: Place; destination: Place; route?: LatLng[]; route_distance_m?: number; detail?: string;
+  /** Location 1 and Location 2 (networks saved earlier used `pickup` / `destination`). */
+  start?: Place; end?: Place; pickup?: Place; destination?: Place;
+  boundary?: string[];
+  /** True while the traffic values are demonstration samples, not real counts. */
+  sample_values?: boolean; route?: LatLng[]; route_distance_m?: number; detail?: string;
   radius_m?: number; trip_flow?: number; attribution?: string;
+  /** What the generator merged, left out or could not connect (shown in the workspace). */
+  notes?: string[];
 }
 export type State = "not_solved" | "outdated" | "solved" | "inconsistent";
 export interface Status { state: State; classification: string | null; rank: number | null }
@@ -93,5 +99,10 @@ export interface Analysis {
 export interface AnalyzeResponse { validation: Validation; result: Analysis | null }
 export interface MapResult {
   network: NetworkDraft; warnings: string[];
-  stats: { junctions: number; roads: number; components: number; destination_reachable: boolean; pickup_junction: string; destination_junction: string; pruned_segments: number };
+  stats: { junctions: number; roads: number; components: number; end_reachable: boolean; start_junction: string; end_junction: string; boundary_junctions: number; pruned_segments: number };
+}
+export interface TrafficValues {
+  junctions: { key: string; net_demand: string }[];
+  roads: { key: string; known_flow: string | null }[];
+  summary: { entry_or_exit_points: number; measured_roads: number; note: string };
 }

@@ -1,4 +1,4 @@
-import type { AnalyzeResponse, Dashboard, MapResult, NetworkDraft, Place } from "./types";
+import type { AnalyzeResponse, Dashboard, MapResult, NetworkDraft, Place, TrafficValues } from "./types";
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
 
@@ -46,10 +46,11 @@ export const api = {
     post<AnalyzeResponse>("/api/analyze", { network: payload(n), parameters, start_junction: start || null }, signal),
   storeSolution: (id: number, parameters: Record<string, string>) =>
     post<{ id: number; classification: string }>(`/api/networks/${id}/solutions`, { parameters }),
+  sampleValues: (n: NetworkDraft) => post<TrafficValues>("/api/sample-values", payload(n)),
   report: (n: NetworkDraft, parameters: Record<string, string>) => post<Blob>("/api/report", { network: payload(n), parameters }),
   geocode: (q: string, near?: { lat: number; lng: number }, signal?: AbortSignal) =>
     req<Place[]>(`/api/geocode?q=${encodeURIComponent(q)}${near ? `&lat=${near.lat}&lng=${near.lng}` : ""}`, { signal }),
   reverse: (lat: number, lng: number) => req<Place>(`/api/geocode/reverse?lat=${lat}&lng=${lng}`),
-  generateMapNetwork: (o: { pickup: Place; destination: Place; detail: string; radius_m: number; prune_stubs: boolean; trip_flow: number }, signal?: AbortSignal) =>
+  generateMapNetwork: (o: { start: Place; end: Place; detail: string; radius_m: number; prune_stubs: boolean; trip_flow: number }, signal?: AbortSignal) =>
     post<MapResult>("/api/map/network", o, signal),
 };

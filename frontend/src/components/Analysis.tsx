@@ -5,7 +5,7 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 import { Matrix } from "@/components/Matrix";
 import { NetworkDiagram, type EdgeStyle } from "@/components/NetworkDiagram";
 import { Alert, Badge, Button, Card, Input, Label } from "@/components/ui/ui";
-import { FLOW_COLORS, FLOW_LABELS, replay, toNumber, type FlowKind, type RoadFlow } from "@/lib/graph";
+import { FLOW_COLORS, FLOW_LABELS, replay, roadIds, toNumber, type FlowKind, type RoadFlow } from "@/lib/graph";
 import type { Analysis as A, NetworkDraft, SolutionInfo, Step } from "@/lib/types";
 import type { Workspace } from "@/lib/useWorkspace";
 import { cn } from "@/lib/utils";
@@ -216,6 +216,7 @@ export function AnalysisSections({ net, ws, a, solution, auto, flows }: {
     );
   }
   const info = a.analysis;
+  const ids = roadIds(net);
   const vars = a.matrix.variables;
   const cols = [...vars, "B"];
   const rows = net.junctions.map((j) => j.name);
@@ -236,8 +237,8 @@ export function AnalysisSections({ net, ws, a, solution, auto, flows }: {
               <details key={e.junction_key} className="rounded-lg border border-slate-200 px-3 py-1.5 dark:border-navy-700">
                 <summary className="cursor-pointer text-sm"><b className="mr-3">{e.junction_name}</b><span className="eq" data-testid="equation">{e.text}</span></summary>
                 <div className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
-                  <div><b>Incoming</b>{e.incoming.map((r) => <div key={r.road_key}>from {r.from}: {r.variable ?? `known ${r.known_flow}`} {r.label && <span className="text-slate-500">({r.label})</span>}</div>)}{!e.incoming.length && <div className="text-slate-400">none</div>}</div>
-                  <div><b>Outgoing</b>{e.outgoing.map((r) => <div key={r.road_key}>to {r.to}: {r.variable ?? `known ${r.known_flow}`} {r.label && <span className="text-slate-500">({r.label})</span>}</div>)}{!e.outgoing.length && <div className="text-slate-400">none</div>}</div>
+                  <div><b>Incoming</b>{e.incoming.map((r) => <div key={r.road_key}>{ids[r.road_key]} from {r.from}: {r.variable ?? `known ${r.known_flow}`} {r.label && <span className="text-slate-500">({r.label})</span>}</div>)}{!e.incoming.length && <div className="text-slate-400">none</div>}</div>
+                  <div><b>Outgoing</b>{e.outgoing.map((r) => <div key={r.road_key}>{ids[r.road_key]} to {r.to}: {r.variable ?? `known ${r.known_flow}`} {r.label && <span className="text-slate-500">({r.label})</span>}</div>)}{!e.outgoing.length && <div className="text-slate-400">none</div>}</div>
                   <ol className="list-decimal pl-5 text-slate-600 dark:text-slate-300 sm:col-span-2">{e.derivation.map((d, i) => <li key={i}>{d}</li>)}</ol>
                 </div>
               </details>
@@ -248,6 +249,7 @@ export function AnalysisSections({ net, ws, a, solution, auto, flows }: {
       {section("coefficient", () => (
         <div className="space-y-3">
           <p className="text-sm">AX = B with one row per junction and one column per unknown road. Variable order: <span className="font-mono">{vars.join(", ") || "none"}</span>.</p>
+          <p className="text-xs text-slate-500" data-testid="variable-map">{a.variables.map((v) => `${v.name} = ${ids[v.road_key]} (${name(v.source)}→${name(v.target)})`).join(" · ")}</p>
           <div className="flex flex-wrap items-start gap-4">
             <div><div className="text-xs font-semibold">A</div><Matrix data={a.matrix.A} cols={vars} rowLabels={rows} /></div>
             <div><div className="text-xs font-semibold">X</div><Matrix data={vars.map((x) => [x])} /></div>
@@ -319,8 +321,8 @@ export function AnalysisSections({ net, ws, a, solution, auto, flows }: {
         <div className="space-y-3">
           <NetworkDiagram net={net} height={380} styles={Object.fromEntries(net.roads.map((r) => [r.key, { color: FLOW_COLORS[flows[r.key].kind], label: net.roads.length > 60 ? (flows[r.key].value ?? flows[r.key].text) : flows[r.key].text }]))} />
           <Legend />
-          <div className="max-h-96 overflow-auto"><table className="w-full text-sm" data-testid="final-table"><thead><tr className="text-left text-xs text-slate-500"><th>Road</th><th>Direction</th><th>Flow</th><th>How obtained</th></tr></thead><tbody>
-            {net.roads.map((r) => <tr key={r.key} className="border-t border-slate-100 dark:border-navy-700"><td className="py-0.5 pr-2">{r.label || "Unnamed road"}</td><td className="pr-2">{name(r.source)} → {name(r.target)}</td>
+          <div className="max-h-96 overflow-auto"><table className="w-full text-sm" data-testid="final-table"><thead><tr className="text-left text-xs text-slate-500"><th>ID</th><th>Road</th><th>Direction</th><th>Flow</th><th>How obtained</th></tr></thead><tbody>
+            {net.roads.map((r) => <tr key={r.key} className="border-t border-slate-100 dark:border-navy-700"><td className="py-0.5 pr-2 font-mono">{ids[r.key]}</td><td className="pr-2">{r.label || "Unnamed road"}</td><td className="pr-2">{name(r.source)} → {name(r.target)}</td>
               <td className="pr-2 font-mono font-semibold" style={{ color: FLOW_COLORS[flows[r.key].kind] }}>{flows[r.key].text}</td><td className="text-xs">{FLOW_LABELS[flows[r.key].kind]}</td></tr>)}
           </tbody></table></div>
         </div>

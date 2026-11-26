@@ -168,14 +168,14 @@ for i, (head, items) in enumerate([
     box(s, 0.6 + i * 4.15, 2.85, 3.9, 2.6, items, fill=LIGHT, color=NAVY, size=17)
 
 shot_slide("Automatic map-based network creation", "Method 1", "Point out real street names and one-way arrows.", "map-network",
-           ["Search pickup and destination", "Real roads in a corridor around the route", "Intersections become junctions", "One-way rules preserved", "Edit, add flows, analyse, save"])
+           ["Choose Location 1 and Location 2", "Real roads in a corridor around the route", "Clean graph: vertices V1…, edges E1…", "One-way rules preserved", "Boundary traffic entered or sampled"])
 shot_slide("Manual network creation", "Method 2", "Click to create junctions, connect two, edit in the side panel.", "manual-editor",
            ["Click the canvas to add junctions", "Connect two junctions to add a road", "Edges follow their junctions", "Set demand D and measured flows", "Same solver as map mode"])
 shot_slide("OpenStreetMap integration", "Map data", "Public Nominatim forbids autocomplete, so Photon is used. Requests are identified, spaced and cached.", "map-search",
            ["Autocomplete by Photon", "Driving route by OSRM", "Road data by Overpass", "Tiles with attribution", "Caching, rate limiting, clear errors"])
 
 s = slide("Graph representation", "Graph theory", "Junctions are vertices, roads directed edges. Explain BFS for reachability and connectivity.")
-bullets(s, ["Junction = vertex: id, name, coordinates, type, demand D", "Road = directed edge: source, destination, name, geometry, length, flow",
+bullets(s, ["Junction = vertex V1, V2, …: coordinates, type, demand D", "Road = directed edge E1, E2, …: start, end, name, geometry, length, flow",
             "A two-way street is two directed edges", "Adjacency lists use O(V + E) memory", "BFS: directed reachability and weak connectivity",
             "Disconnected parts are identified, not hidden"], size=20)
 
@@ -205,11 +205,11 @@ text(s, 0.6, 5.4, 12.1, 1.0, ["Cascading deletes · one transaction per save · 
 s = slide("Application demonstration", "Demonstration", "Switch to the live application: run workflow A, then workflow B.")
 picture(s, "dashboard", 0.4, 1.6, 6.3, 4.2)
 picture(s, "map-analysis", 6.9, 1.6, 6.0, 4.2)
-text(s, 0.6, 6.0, 12.1, 0.8, ["Workflow A: two places → real network → edit → flows → analysis → save",
+text(s, 0.6, 6.0, 12.1, 0.8, ["Workflow A: two locations → clean graph → traffic values → analysis → save",
                               "Workflow B: draw → flows → RREF → change parameters → save"], 16, bullet=True)
 
 s = slide("Testing and results", "Quality", "Counts are from the final test run of this version.")
-RESULTS = [("Check", "Result"), ("Backend tests (Pytest), SQLite and PostgreSQL", "59 passed"), ("Frontend tests (Vitest)", "16 passed"),
+RESULTS = [("Check", "Result"), ("Backend tests (Pytest), SQLite and PostgreSQL", "67 passed"), ("Frontend tests (Vitest)", "18 passed"),
            ("Browser workflows A (map) and B (manual)", "all checks passed"), ("Demo network 1", "unique: x1 = 60, x2 = 30"),
            ("Demo network 2", "x1 = 30 + t, x2 = 70 − t, x3 = t"), ("Demo network 3", "rank 4, two free variables")]
 table = s.shapes.add_table(len(RESULTS), 2, Inches(0.8), Inches(1.8), Inches(11.7), Inches(4.2)).table
@@ -226,7 +226,7 @@ for r, row in enumerate(RESULTS):
 
 s = slide("Future scope", "Next steps", "Be honest about what the system does not do.")
 box(s, 0.6, 1.7, 5.9, 0.7, "Present limitations", fill=RGBColor(0x92, 0x40, 0x0E), size=18)
-bullets(s, ["Static flows; no capacities or turn restrictions", "Edge-of-map demands must be entered", "Public map services can be slow or fail", "No user authentication"], y=2.7, w=5.9, size=18)
+bullets(s, ["Static flows; no capacities or turn restrictions", "Boundary traffic must be entered", "Public map services can be slow or fail", "No user authentication"], y=2.7, w=5.9, size=18)
 box(s, 6.8, 1.7, 5.9, 0.7, "Future scope", fill=RGBColor(0x06, 0x5F, 0x46), size=18)
 bullets(s, ["Live sensor feeds", "Least squares for noisy measurements", "Capacities and min-cost flow", "Self-hosted map data, user accounts"], x=6.8, y=2.7, w=5.9, size=18)
 

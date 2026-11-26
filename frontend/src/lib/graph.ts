@@ -1,5 +1,5 @@
 /** Pure operations on the shared graph model. Every editor (canvas or map) goes through these. */
-import type { Analysis, FlowStatus, Junction, LatLng, NetworkDraft, Road, SolutionInfo } from "./types";
+import type { Analysis, FlowStatus, Junction, LatLng, NetworkDraft, Road, SolutionInfo, TrafficValues } from "./types";
 
 export function emptyNetwork(): NetworkDraft {
   return { name: "Untitled network", description: "", method: "manual", junctions: [], roads: [] };
@@ -20,17 +20,39 @@ export function variableNames(n: NetworkDraft): Record<string, string> {
   return out;
 }
 
+/** The road's unique ID (E1, E2, ...). Networks saved before IDs existed are numbered by position. */
+export function roadIds(n: NetworkDraft): Record<string, string> {
+  return Object.fromEntries(n.roads.map((r, i) => [r.key, /^E\d+$/.test(r.key) ? r.key : `E${i + 1}`]));
+}
+
+const PORT_TYPES = ["start", "end", "boundary", "pickup", "destination"];
+/** A junction where traffic can enter or leave the network. */
+export const isPort = (n: NetworkDraft, j: Junction) =>
+  PORT_TYPES.includes(j.node_type ?? "") || Boolean(n.map_meta?.boundary?.includes(j.key)) || (Number(j.net_demand) || 0) !== 0;
+
+export function applyTraffic(n: NetworkDraft, t: TrafficValues): NetworkDraft {
+  const demand = new Map(t.junctions.map((j) => [j.key, j.net_demand]));
+  const flow = new Map(t.roads.map((r) => [r.key, r.known_flow]));
+  return { ...n, map_meta: n.map_meta ? { ...n.map_meta, sample_values: true } : n.map_meta,
+    junctions: n.junctions.map((j) => ({ ...j, net_demand: demand.get(j.key) ?? j.net_demand })),
+    roads: n.roads.map((r) => ({ ...r, known_flow: flow.has(r.key) ? flow.get(r.key)! : r.known_flow })) };
+}
+export function clearTraffic(n: NetworkDraft): NetworkDraft {
+  return { ...n, map_meta: n.map_meta ? { ...n.map_meta, sample_values: false } : n.map_meta,
+    junctions: n.junctions.map((j) => ({ ...j, net_demand: "0" })), roads: n.roads.map((r) => ({ ...r, known_flow: null })) };
+}
+
 export const roadTitle = (n: NetworkDraft, r: Road) => {
   const name = (k: string) => n.junctions.find((j) => j.key === k)?.name ?? k;
   return `${r.label || "Unnamed road"} (${name(r.source)} → ${name(r.target)})`;
 };
 
 export function addJunction(n: NetworkDraft, at: { x: number; y: number; lat?: number; lng?: number }): { net: NetworkDraft; key: string } {
-  const key = nextKey("J", n.junctions.map((j) => j.key));
+  const key = nextKey("V", n.junctions.map((j) => j.key));
   const names = new Set(n.junctions.map((j) => j.name));
   let i = Number(key.slice(1));
-  while (names.has(`J${i}`)) i++;
-  const j: Junction = { key, name: `J${i}`, x: Math.round(at.x), y: Math.round(at.y), lat: at.lat ?? null, lng: at.lng ?? null,
+  while (names.has(`V${i}`)) i++;
+  const j: Junction = { key, name: `V${i}`, x: Math.round(at.x), y: Math.round(at.y), lat: at.lat ?? null, lng: at.lng ?? null,
     node_type: "junction", net_demand: "0" };
   return { net: { ...n, junctions: [...n.junctions, j] }, key };
 }
@@ -50,7 +72,7 @@ export function addRoad(n: NetworkDraft, source: string, target: string, allowPa
   if (source === target) return { net: n, error: "A road cannot start and end at the same junction." };
   if (!allowParallel && n.roads.some((r) => r.source === source && r.target === target))
     return { net: n, error: `A road ${a.name} → ${b.name} already exists. Enable “parallel roads” to add another.` };
-  const key = nextKey("r", n.roads.map((r) => r.key));
+  const key = nextKey("E", n.roads.map((r) => r.key));
   const geometry: LatLng[] | null = a.lat != null && a.lng != null && b.lat != null && b.lng != null ? [[a.lat, a.lng], [b.lat, b.lng]] : null;
   const road: Road = { key, label: "", source, target, known_flow: null, length_m: geometry ? Math.round(distance(geometry[0], geometry[1])) : null,
     geometry, osm_way_id: null, highway: "", origin: "user" };
@@ -88,7 +110,7 @@ export function setTwoWay(n: NetworkDraft, key: string, twoWay: boolean): Networ
   if (!r) return n;
   const opposite = oppositeRoads(n, r);
   if (twoWay && !opposite.length) {
-    const back: Road = { ...r, key: nextKey("r", n.roads.map((x) => x.key)), source: r.target, target: r.source, known_flow: null,
+    const back: Road = { ...r, key: nextKey("E", n.roads.map((x) => x.key)), source: r.target, target: r.source, known_flow: null,
       geometry: r.geometry ? [...r.geometry].reverse() : r.geometry };
     return { ...n, roads: [...n.roads, back] };
   }
@@ -137,7 +159,7 @@ export function splitRoadAt(n: NetworkDraft, key: string, at: LatLng): { net: Ne
     const cut = closestOnPath(line, point);
     const first: LatLng[] = [...line.slice(0, cut.index + 1), point], second: LatLng[] = [point, ...line.slice(cut.index + 1)];
     const halfA: Road = { ...r, target: mid, geometry: first, length_m: Math.round(pathLength(first)) };
-    const halfB: Road = { ...r, key: nextKey("r", net.roads.map((x) => x.key)), source: mid, known_flow: null, geometry: second, length_m: Math.round(pathLength(second)) };
+    const halfB: Road = { ...r, key: nextKey("E", net.roads.map((x) => x.key)), source: mid, known_flow: null, geometry: second, length_m: Math.round(pathLength(second)) };
     const i = net.roads.findIndex((x) => x.key === r.key);
     net = { ...net, roads: [...net.roads.slice(0, i), halfA, halfB, ...net.roads.slice(i + 1)] };
   }

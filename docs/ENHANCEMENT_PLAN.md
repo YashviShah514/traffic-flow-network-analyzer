@@ -54,3 +54,9 @@ PDF report, React Flow canvas, presentation mode, responsive layout.
 - Where junctions are closer than the marker size at the current zoom, markers overlap until the user zooms in.
 - Demand at the edges of a map extract is not available from map data and must be entered by the user.
 - No authentication.
+
+## Update: Location 1 / Location 2 and clean graph conversion
+- Boundary junctions, V/E identifiers, duplicate and pass-through removal, automatic widening, map and graph views, labelled sample traffic.
+- Tests: pytest 67 (SQLite and PostgreSQL), vitest 18, workflows 60 checks, buttons 41 checks.
+- Live OpenStreetMap check: 7 of 8 city pairs gave a connected, reachable, solvable graph; the 8th could not be downloaded (Overpass errors).
+- The demonstration video predates this update and still shows Pickup / Destination.

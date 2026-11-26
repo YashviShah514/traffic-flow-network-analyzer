@@ -70,7 +70,7 @@ const SLIDES: SlideDef[] = [
       {[["Frontend", "React · TypeScript · Vite · Tailwind CSS · React Flow · Leaflet · Recharts"], ["Backend", "Python · FastAPI · SQLAlchemy · SciPy · SymPy · ReportLab · HTTPX"], ["Data & services", "PostgreSQL · OpenStreetMap · Photon · OSRM · Overpass · Pytest · Vitest · Playwright"]].map(([h, t]) => (
         <Box key={h} className="py-8 text-left"><div className="mb-2 text-2xl font-bold text-cyan-300">{h}</div><div className="text-lg">{t}</div></Box>))}</div></>) },
   { title: "Automatic map-based creation", notes: "Search two places, generate, and point out real street names and one-way arrows.",
-    render: () => <ShotSlide kicker="Method 1" title="Automatic map-based creation" file="map-network" points={["Search pickup and destination", "Real roads in a corridor around the route", "Intersections become vertices", "One-way rules preserved", "Edit, add flows, save"]} /> },
+    render: () => <ShotSlide kicker="Method 1" title="Automatic map-based creation" file="map-network" points={["Choose Location 1 and Location 2", "Real roads in a corridor around the route", "Clean graph: vertices V1…, edges E1…", "One-way rules preserved", "Enter or sample the boundary traffic"]} /> },
   { title: "Manual network creation", notes: "Click to create junctions; connect two junctions; edit in the side panel.",
     render: () => <ShotSlide kicker="Method 2" title="Manual network creation" file="manual-editor" points={["Click to create junctions", "Connect junctions with one-way roads", "Edges follow their junctions", "Set demands and measured flows", "Same solver as map mode"]} /> },
   { title: "OpenStreetMap integration", notes: "Mention usage policies: attribution, identified requests, caching, no Nominatim autocomplete.",
@@ -120,7 +120,7 @@ const SLIDES: SlideDef[] = [
         <Box key={t} className="text-left"><div className="font-mono text-lg font-bold text-cyan-300">{t}</div><div className="mt-1 text-sm text-slate-300">{c}</div></Box>))}</div>
       <p className="mt-6 text-lg text-slate-300">Cascading deletes · one transaction per save · edits mark old solutions outdated</p></>) },
   { title: "Application demonstration", notes: "Switch to the app now: Create New Network, both methods.",
-    render: () => <ShotSlide kicker="Demonstration" title="One page: network and analysis" file="map-analysis" points={["Dashboard → Create New Network", "Workflow A: map → edit → flows → analyse → save", "Workflow B: draw → flows → RREF → parameters → save"]} /> },
+    render: () => <ShotSlide kicker="Demonstration" title="One page: network and analysis" file="map-analysis" points={["Dashboard → Create New Network", "Workflow A: two locations → graph → flows → analyse → save", "Workflow B: draw → flows → RREF → parameters → save"]} /> },
   { title: "Testing and results", notes: "Numbers on this slide are computed live.",
     render: (d) => (<><Title kicker="Quality">Testing and results</Title>
       {d.every(Boolean) ? <table className="w-full text-left text-xl text-slate-100"><thead className="text-sm uppercase text-cyan-300"><tr><th className="py-2">Demo network</th><th>Unknowns</th><th>Rank</th><th>Nullity</th><th>Outcome</th><th>Verified</th></tr></thead><tbody>
@@ -128,7 +128,7 @@ const SLIDES: SlideDef[] = [
       <div className="mt-8"><Bullets size="text-xl" items={["Pytest: mathematics, map conversion, API, database upgrade", "Vitest: graph editing operations; Playwright: both workflows end to end", "Run-time checks: AX = B, Av = 0, SymPy comparison"]} /></div></>) },
   { title: "Future scope", notes: "Be honest about the limits.",
     render: () => (<><Title kicker="Next steps">Limitations and future scope</Title><div className="grid grid-cols-2 gap-8">
-      <div><h3 className="mb-3 text-2xl font-bold text-amber-300">Limitations</h3><Bullets size="text-xl" items={["Static flows only", "Edge-of-map demands must be entered", "Public map services can be slow", "No user authentication"]} /></div>
+      <div><h3 className="mb-3 text-2xl font-bold text-amber-300">Limitations</h3><Bullets size="text-xl" items={["Static flows only", "Boundary traffic must be entered", "Public map services can be slow", "No user authentication"]} /></div>
       <div><h3 className="mb-3 text-2xl font-bold text-emerald-300">Future scope</h3><Bullets size="text-xl" items={["Live sensor feeds", "Least squares for noisy data", "Capacities and min-cost flow", "Turn restrictions, time of day"]} /></div></div></>) },
   { title: "Conclusion", notes: "Close by linking the subjects.",
     render: () => (<div className="flex h-full flex-col justify-center"><Title kicker="Conclusion">Conclusion</Title>
