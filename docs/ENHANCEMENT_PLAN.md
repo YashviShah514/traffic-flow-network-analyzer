@@ -49,7 +49,7 @@ PDF report, React Flow canvas, presentation mode, responsive layout.
 | 10-11 Docs and PPT | 28 documentation sections with real screenshots; presentation/FlowMatrix.pptx, 21 slides |
 
 ## Remaining issues
-- Not redeployed: changes are local until committed and pushed.
+- Deployed to Render and checked live; free services sleep when idle and the free database expires after 30 days.
 - Public Overpass servers are slow or unavailable at times (observed 34 s responses and total timeouts).
 - Where junctions are closer than the marker size at the current zoom, markers overlap until the user zooms in.
 - Demand at the edges of a map extract is not available from map data and must be entered by the user.
