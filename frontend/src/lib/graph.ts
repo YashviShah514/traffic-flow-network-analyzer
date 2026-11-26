@@ -67,7 +67,20 @@ export function reverseRoad(n: NetworkDraft, key: string): NetworkDraft {
   return { ...n, roads: n.roads.map((r) => (r.key === key
     ? { ...r, source: r.target, target: r.source, geometry: r.geometry ? [...r.geometry].reverse() : r.geometry } : r)) };
 }
-export const oppositeRoads = (n: NetworkDraft, r: Road) => n.roads.filter((o) => o.key !== r.key && o.source === r.target && o.target === r.source);
+/** Move a road to different start / end junctions, with the same rules as drawing a new road. */
+export function setEndpoints(n: NetworkDraft, key: string, source: string, target: string, allowParallel = false): { net: NetworkDraft; error?: string } {
+  const road = n.roads.find((r) => r.key === key);
+  if (!road || (road.source === source && road.target === target)) return { net: n };
+  const others = { ...n, roads: n.roads.filter((r) => r.key !== key) };
+  const made = addRoad(others, source, target, allowParallel);
+  if (made.error) return { net: n, error: made.error };
+  const drawn = made.net.roads[made.net.roads.length - 1];
+  // The old shape no longer joins these junctions, so it is not kept (nor presented as OpenStreetMap geometry).
+  const moved: Road = { ...road, source, target, geometry: drawn.geometry, length_m: drawn.length_m, osm_way_id: null, highway: "", origin: "user" };
+  return { net: updateRoad(n, key, moved) };
+}
+
+export const oppositeRoads =(n: NetworkDraft, r: Road) => n.roads.filter((o) => o.key !== r.key && o.source === r.target && o.target === r.source);
 
 /** One-way <-> two-way. A two-way street is two directed edges, one per direction. */
 export function setTwoWay(n: NetworkDraft, key: string, twoWay: boolean): NetworkDraft {

@@ -205,7 +205,8 @@ export default function Workspace() {
           </div>
           <div className={cn("border-t border-slate-200 px-3 py-2 dark:border-navy-700")}><Legend /></div>
         </Card>
-        <PropertiesPanel net={net} setNet={setNet} selected={selected} onSelect={setSelected} editable={editing} flows={flows} />
+        <PropertiesPanel net={net} setNet={setNet} selected={selected} onSelect={setSelected} editable={editing} flows={flows}
+          allowParallel={parallel} onError={(text) => setMessage({ tone: "error", text })} />
       </div>
 
       <div ref={analysisRef} className="scroll-mt-4">

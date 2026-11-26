@@ -209,7 +209,7 @@ text(s, 0.6, 6.0, 12.1, 0.8, ["Workflow A: two places → real network → edit 
                               "Workflow B: draw → flows → RREF → change parameters → save"], 16, bullet=True)
 
 s = slide("Testing and results", "Quality", "Counts are from the final test run of this version.")
-RESULTS = [("Check", "Result"), ("Backend tests (Pytest), SQLite and PostgreSQL", "58 passed"), ("Frontend tests (Vitest)", "15 passed"),
+RESULTS = [("Check", "Result"), ("Backend tests (Pytest), SQLite and PostgreSQL", "59 passed"), ("Frontend tests (Vitest)", "16 passed"),
            ("Browser workflows A (map) and B (manual)", "all checks passed"), ("Demo network 1", "unique: x1 = 60, x2 = 30"),
            ("Demo network 2", "x1 = 30 + t, x2 = 70 − t, x3 = t"), ("Demo network 3", "rank 4, two free variables")]
 table = s.shapes.add_table(len(RESULTS), 2, Inches(0.8), Inches(1.8), Inches(11.7), Inches(4.2)).table

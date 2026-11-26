@@ -5,7 +5,7 @@ import { NetworkDiagram } from "@/components/NetworkDiagram";
 import { DOCS } from "@/content/docs";
 import { VIVA } from "@/content/viva";
 import {
-  addJunction, addRoad, chooseSolution, emptyNetwork, removeJunction, removeRoad, replay, reverseRoad, roadFlows, setTwoWay,
+  addJunction, addRoad, chooseSolution, emptyNetwork, removeJunction, removeRoad, replay, reverseRoad, roadFlows, setEndpoints, setTwoWay,
   splitRoadAt, toNumber, updateRoad, variableNames,
 } from "@/lib/graph";
 import PresentationMode, { SLIDE_COUNT, SLIDE_TITLES } from "@/pages/PresentationMode";
@@ -47,6 +47,16 @@ describe("graph editing", () => {
     const two = setTwoWay(n, "r1", true);
     expect(two.roads).toHaveLength(4);
     expect(setTwoWay(two, "r1", false).roads).toHaveLength(3);
+  });
+  it("changes a road's start or end junction under the same rules as drawing one", () => {
+    const n = addJunction(triangle(), { x: 300, y: 300 }).net;
+    const moved = setEndpoints(n, "r1", "J1", "J4");
+    expect(moved.error).toBeUndefined();
+    expect(moved.net.roads[0]).toMatchObject({ key: "r1", source: "J1", target: "J4" });
+    expect(moved.net.roads.map((r) => r.key)).toEqual(["r1", "r2", "r3"]); // order (and variable names) unchanged
+    expect(setEndpoints(n, "r1", "J2", "J2").error).toMatch(/same junction/);
+    expect(setEndpoints(n, "r1", "J2", "J3").error).toMatch(/already exists/);
+    expect(setEndpoints(n, "r1", "J2", "J3", true).error).toBeUndefined();
   });
   it("numbers only the unknown roads", () => {
     const n = updateRoad(triangle(), "r2", { known_flow: "4" });

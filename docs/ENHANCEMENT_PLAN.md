@@ -45,7 +45,7 @@ PDF report, React Flow canvas, presentation mode, responsive layout.
 | 4-5 Map creation | Photon + OSRM + Overpass, corridor clipping, junction consolidation (20 m), one-way rules |
 | 6-7 Solver and page | one pipeline; 15 sections on the workspace page |
 | 8 Dashboard | three statistics from the database; stale solutions invalidated |
-| 9 Testing | pytest 58 (SQLite and PostgreSQL), vitest 15, e2e/workflows.mjs 50 checks, e2e/buttons.mjs 22 checks |
+| 9 Testing | pytest 59, vitest 16, e2e/workflows.mjs 50 checks, e2e/buttons.mjs 41 checks |
 | 10-11 Docs and PPT | 28 documentation sections with real screenshots; presentation/FlowMatrix.pptx, 21 slides |
 
 ## Remaining issues

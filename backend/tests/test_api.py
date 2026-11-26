@@ -1,5 +1,5 @@
 import copy
-from io import BytesIO
+import pytest
 
 from sqlalchemy import text
 
@@ -179,3 +179,11 @@ def test_upgrade_from_version_1_database(tmp_path):
         assert [float(v) for (v,) in c.execute(text("SELECT net_demand FROM junctions ORDER BY id"))] == [-100, 30]
         assert [t for (t,) in c.execute(text("SELECT node_type FROM junctions"))] == ["junction", "junction"]
     assert migrations.upgrade(engine) == []  # running again changes nothing
+
+
+def test_pdf_report_shows_the_chosen_solution(client):
+    pymupdf = pytest.importorskip("pymupdf")  # optional: only needed to read the PDF back
+    r = client.post("/api/report", json={"network": _new(), "parameters": {"x3": 5}})
+    text = " ".join(" ".join(page.get_text() for page in pymupdf.open(stream=r.content, filetype="pdf")).split())
+    assert "x1 = 30 + t1" in text and "Chosen parameter values (parameters: x3 = 5)" in text
+    assert "A to B A -> B 35 computed" in text and "A to C A -> C 65 computed" in text
